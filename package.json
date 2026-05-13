@@ -1,0 +1,14 @@
+{
+  "name": "lenker",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lenker monorepo skeleton for MVP v0.1",
+  "workspaces": [
+    "apps/panel-web"
+  ],
+  "scripts": {
+    "panel-web:dev": "npm --workspace @lenker/panel-web run dev",
+    "panel-web:build": "npm --workspace @lenker/panel-web run build",
+    "panel-web:lint": "npm --workspace @lenker/panel-web run lint"
+  }
+}

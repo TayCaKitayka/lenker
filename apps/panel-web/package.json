@@ -1,0 +1,25 @@
+{
+  "name": "@lenker/panel-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Lenker panel web skeleton for MVP v0.1",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "eslint": "^9.12.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
