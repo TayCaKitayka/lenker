@@ -8,6 +8,8 @@ type Event struct {
 	Action       string
 	ResourceType string
 	ResourceID   string
+	Outcome      string
+	Reason       string
 }
 
 type Recorder interface {
@@ -20,3 +22,11 @@ type NoopRecorder struct {
 func (NoopRecorder) Record(ctx context.Context, event Event) error {
 	return nil
 }
+
+const (
+	ActionAdminLogin             = "admin.login"
+	ActionAdminSessionValidation = "admin.session_validation"
+
+	OutcomeSuccess = "success"
+	OutcomeFailure = "failure"
+)

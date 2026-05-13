@@ -24,6 +24,7 @@ Current foundation:
 - PostgreSQL storage bootstrap through `database/sql` and the `pgx` stdlib driver
 - repository interfaces and initial query implementations for admins, users, plans, and subscriptions
 - minimal admin login service with password hash verification, inactive admin check, and session creation
+- admin session validation middleware using `Authorization: Bearer <session_token>`
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -50,12 +51,26 @@ Implemented foundation routes:
 - `GET /api/v1/plans`
 - `GET /api/v1/subscriptions`
 
+Admin-only routes:
+
+- `GET /api/v1/users`
+- `GET /api/v1/plans`
+- `GET /api/v1/subscriptions`
+
+Use the token returned by admin login:
+
+```http
+Authorization: Bearer <session_token>
+```
+
 Not included here yet:
 
 - business logic
 - create/update/delete operations
 - full production authentication policy
-- full session lifecycle management
+- logout and full session lifecycle management
+- refresh tokens
+- 2FA
 - RBAC permission engine
 - audit persistence
 - billing

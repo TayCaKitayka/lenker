@@ -9,16 +9,17 @@ import (
 )
 
 type Handler struct {
-	logger *slog.Logger
-	users  storage.UsersRepository
+	logger    *slog.Logger
+	users     storage.UsersRepository
+	adminOnly func(http.Handler) http.Handler
 }
 
-func NewHandler(logger *slog.Logger, users storage.UsersRepository) *Handler {
-	return &Handler{logger: logger, users: users}
+func NewHandler(logger *slog.Logger, users storage.UsersRepository, adminOnly func(http.Handler) http.Handler) *Handler {
+	return &Handler{logger: logger, users: users, adminOnly: adminOnly}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/users", h.List)
+	mux.Handle("GET /api/v1/users", h.adminOnly(http.HandlerFunc(h.List)))
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {

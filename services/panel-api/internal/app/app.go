@@ -33,13 +33,15 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 	defer store.Close()
 
+	adminSession := auth.NewSessionMiddleware(logger, store.Admins())
+
 	router := httpapi.NewRouter(httpapi.RouterDeps{
 		Logger:        logger,
 		Auth:          auth.NewHandler(logger, auth.NewService(store.Admins(), auth.NewPasswordVerifier())),
 		Admins:        admins.NewHandler(logger),
-		Users:         users.NewHandler(logger, store.Users()),
-		Plans:         plans.NewHandler(logger, store.Plans()),
-		Subscriptions: subscriptions.NewHandler(logger, store.Subscriptions()),
+		Users:         users.NewHandler(logger, store.Users(), adminSession.RequireAdmin),
+		Plans:         plans.NewHandler(logger, store.Plans(), adminSession.RequireAdmin),
+		Subscriptions: subscriptions.NewHandler(logger, store.Subscriptions(), adminSession.RequireAdmin),
 	})
 
 	server := &http.Server{

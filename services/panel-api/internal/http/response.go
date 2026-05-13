@@ -37,3 +37,7 @@ func WriteError(w http.ResponseWriter, status int, code string, message string) 
 func WriteStorageError(w http.ResponseWriter) {
 	WriteError(w, http.StatusInternalServerError, "storage_error", "storage operation failed")
 }
+
+func WriteUnauthorized(w http.ResponseWriter) {
+	WriteError(w, http.StatusUnauthorized, "unauthorized", "admin session is missing or invalid")
+}

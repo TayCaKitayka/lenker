@@ -11,14 +11,15 @@ import (
 type Handler struct {
 	logger        *slog.Logger
 	subscriptions storage.SubscriptionsRepository
+	adminOnly     func(http.Handler) http.Handler
 }
 
-func NewHandler(logger *slog.Logger, subscriptions storage.SubscriptionsRepository) *Handler {
-	return &Handler{logger: logger, subscriptions: subscriptions}
+func NewHandler(logger *slog.Logger, subscriptions storage.SubscriptionsRepository, adminOnly func(http.Handler) http.Handler) *Handler {
+	return &Handler{logger: logger, subscriptions: subscriptions, adminOnly: adminOnly}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/subscriptions", h.List)
+	mux.Handle("GET /api/v1/subscriptions", h.adminOnly(http.HandlerFunc(h.List)))
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {

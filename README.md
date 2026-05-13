@@ -85,7 +85,7 @@ The service exposes:
 - `GET /api/v1/plans`
 - `GET /api/v1/subscriptions`
 
-`GET /healthz` is functional. `POST /api/v1/auth/admin/login` uses the initial admin auth service and session skeleton. The list routes are wired to initial PostgreSQL repositories and require the first migration to be applied.
+`GET /healthz` is functional. `POST /api/v1/auth/admin/login` uses the initial admin auth service and session skeleton. The list routes are wired to initial PostgreSQL repositories, require the first migration to be applied, and require an admin session token in `Authorization: Bearer <session_token>`.
 
 Conservative auth note:
 
