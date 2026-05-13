@@ -45,3 +45,6 @@ build/
 # Misc
 tmp/
 *.tmp
+
+vpn.md
+AGENTS.md
