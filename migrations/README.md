@@ -28,20 +28,23 @@ Example:
 migrate -path migrations -database "$LENKER_DATABASE_URL" up
 ```
 
+Repository Makefile targets:
+
+```sh
+make migrate-up
+make migrate-down
+VERSION=1 make migrate-force
+```
+
 Conservative choice:
 
 The migration runner is not embedded in `panel-api` yet. Keeping migrations as an explicit CLI operation avoids coupling service startup to schema changes before deployment rules are defined.
 
 ## Admin Password Hashes
 
-The current foundation auth verifier accepts admin `password_hash` values in one of these formats:
+Admin `password_hash` values must be bcrypt hashes.
 
-```text
-sha256$<hex>
-sha256:<hex>
-```
-
-This is a conservative foundation placeholder for early backend wiring. Before real provider usage, replace it with a stronger password hashing policy and migrate stored admin hashes.
+No seed admin is provided yet. Create the first admin explicitly in a local development database after applying migrations; a small dev-only bootstrap helper can be added later without coupling it to production startup.
 
 Planned areas:
 

@@ -89,4 +89,12 @@ The service exposes:
 
 Conservative auth note:
 
-The current password verifier accepts `sha256$<hex>` or `sha256:<hex>` hashes as a foundation-only implementation. Before real provider use, replace this with a stronger password hashing policy such as bcrypt or Argon2id and migrate stored admin hashes accordingly.
+Admin passwords are verified with bcrypt. Store bcrypt hashes in `admins.password_hash`.
+
+Migration helpers are available through `make`:
+
+```sh
+make migrate-up
+make migrate-down
+VERSION=1 make migrate-force
+```

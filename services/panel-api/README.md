@@ -25,6 +25,7 @@ Current foundation:
 - repository interfaces and initial query implementations for admins, users, plans, and subscriptions
 - minimal admin login service with password hash verification, inactive admin check, and session creation
 - admin session validation middleware using `Authorization: Bearer <session_token>`
+- bcrypt password verification for admin accounts
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -83,4 +84,12 @@ The service opens a PostgreSQL handle at startup, but `LENKER_DATABASE_PING` def
 
 Conservative auth note:
 
-The current verifier supports `sha256$<hex>` and `sha256:<hex>` password hashes only to make the first admin login path testable without introducing a larger auth platform. Replace this with bcrypt or Argon2id before real provider usage.
+Admin password hashes must use bcrypt. This keeps the first auth path stronger than the earlier foundation placeholder without adding a larger auth platform, 2FA, refresh tokens, OAuth, or phone auth.
+
+Migration workflow:
+
+```sh
+make migrate-up
+make migrate-down
+VERSION=1 make migrate-force
+```
