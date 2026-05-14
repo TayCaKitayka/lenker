@@ -3,10 +3,13 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/lenker/lenker/services/panel-api/internal/admins"
 )
+
+var ErrNotFound = errors.New("storage resource not found")
 
 type Config struct {
 	DatabaseURL string

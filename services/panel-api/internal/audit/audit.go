@@ -26,6 +26,16 @@ func (NoopRecorder) Record(ctx context.Context, event Event) error {
 const (
 	ActionAdminLogin             = "admin.login"
 	ActionAdminSessionValidation = "admin.session_validation"
+	ActionUserCreate             = "user.create"
+	ActionUserUpdate             = "user.update"
+	ActionUserSuspend            = "user.suspend"
+	ActionUserActivate           = "user.activate"
+	ActionPlanCreate             = "plan.create"
+	ActionPlanUpdate             = "plan.update"
+	ActionPlanArchive            = "plan.archive"
+	ActionSubscriptionCreate     = "subscription.create"
+	ActionSubscriptionUpdate     = "subscription.update"
+	ActionSubscriptionRenew      = "subscription.renew"
 
 	OutcomeSuccess = "success"
 	OutcomeFailure = "failure"

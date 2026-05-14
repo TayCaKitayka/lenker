@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lenker/lenker/services/panel-api/internal/admins"
+	"github.com/lenker/lenker/services/panel-api/internal/audit"
 	"github.com/lenker/lenker/services/panel-api/internal/auth"
 	"github.com/lenker/lenker/services/panel-api/internal/config"
 	httpapi "github.com/lenker/lenker/services/panel-api/internal/http"
@@ -33,15 +34,16 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 	defer store.Close()
 
-	adminSession := auth.NewSessionMiddleware(logger, store.Admins())
+	auditRecorder := audit.NoopRecorder{}
+	adminSession := auth.NewSessionMiddleware(logger, store.Admins()).WithAudit(auditRecorder)
 
 	router := httpapi.NewRouter(httpapi.RouterDeps{
 		Logger:        logger,
-		Auth:          auth.NewHandler(logger, auth.NewService(store.Admins(), auth.NewPasswordVerifier())),
+		Auth:          auth.NewHandler(logger, auth.NewService(store.Admins(), auth.NewPasswordVerifier()).WithAudit(auditRecorder)),
 		Admins:        admins.NewHandler(logger),
-		Users:         users.NewHandler(logger, store.Users(), adminSession.RequireAdmin),
-		Plans:         plans.NewHandler(logger, store.Plans(), adminSession.RequireAdmin),
-		Subscriptions: subscriptions.NewHandler(logger, store.Subscriptions(), adminSession.RequireAdmin),
+		Users:         users.NewHandler(logger, store.Users(), adminSession.RequireAdmin).WithAudit(auditRecorder),
+		Plans:         plans.NewHandler(logger, store.Plans(), adminSession.RequireAdmin).WithAudit(auditRecorder),
+		Subscriptions: subscriptions.NewHandler(logger, store.Subscriptions(), adminSession.RequireAdmin).WithAudit(auditRecorder),
 	})
 
 	server := &http.Server{

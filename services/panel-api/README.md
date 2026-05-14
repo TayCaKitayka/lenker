@@ -26,6 +26,7 @@ Current foundation:
 - minimal admin login service with password hash verification, inactive admin check, and session creation
 - admin session validation middleware using `Authorization: Bearer <session_token>`
 - bcrypt password verification for admin accounts
+- minimal admin CRUD slice for users, plans, and subscriptions
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -49,14 +50,27 @@ Implemented foundation routes:
 - `GET /healthz`
 - `POST /api/v1/auth/admin/login`
 - `GET /api/v1/users`
+- `POST /api/v1/users`
+- `GET /api/v1/users/{id}`
+- `PATCH /api/v1/users/{id}`
+- `POST /api/v1/users/{id}/suspend`
+- `POST /api/v1/users/{id}/activate`
 - `GET /api/v1/plans`
+- `POST /api/v1/plans`
+- `GET /api/v1/plans/{id}`
+- `PATCH /api/v1/plans/{id}`
+- `POST /api/v1/plans/{id}/archive`
 - `GET /api/v1/subscriptions`
+- `POST /api/v1/subscriptions`
+- `GET /api/v1/subscriptions/{id}`
+- `PATCH /api/v1/subscriptions/{id}`
+- `POST /api/v1/subscriptions/{id}/renew`
 
 Admin-only routes:
 
-- `GET /api/v1/users`
-- `GET /api/v1/plans`
-- `GET /api/v1/subscriptions`
+- all `/api/v1/users*` routes
+- all `/api/v1/plans*` routes
+- all `/api/v1/subscriptions*` routes
 
 Use the token returned by admin login:
 
@@ -66,14 +80,15 @@ Authorization: Bearer <session_token>
 
 Not included here yet:
 
-- business logic
-- create/update/delete operations
+- delete operations
+- advanced business rules
 - full production authentication policy
 - logout and full session lifecycle management
 - refresh tokens
 - 2FA
 - RBAC permission engine
 - audit persistence
+- devices, key rotation, and export flows
 - billing
 - marketplace
 - VPN or Xray logic

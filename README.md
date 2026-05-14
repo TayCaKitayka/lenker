@@ -80,15 +80,28 @@ cd services/panel-api
 go run ./cmd/panel-api
 ```
 
-The service exposes:
+The service exposes the first admin panel API slice:
 
 - `GET /healthz`
 - `POST /api/v1/auth/admin/login`
 - `GET /api/v1/users`
+- `POST /api/v1/users`
+- `GET /api/v1/users/{id}`
+- `PATCH /api/v1/users/{id}`
+- `POST /api/v1/users/{id}/suspend`
+- `POST /api/v1/users/{id}/activate`
 - `GET /api/v1/plans`
+- `POST /api/v1/plans`
+- `GET /api/v1/plans/{id}`
+- `PATCH /api/v1/plans/{id}`
+- `POST /api/v1/plans/{id}/archive`
 - `GET /api/v1/subscriptions`
+- `POST /api/v1/subscriptions`
+- `GET /api/v1/subscriptions/{id}`
+- `PATCH /api/v1/subscriptions/{id}`
+- `POST /api/v1/subscriptions/{id}/renew`
 
-`GET /healthz` is functional. `POST /api/v1/auth/admin/login` uses the initial admin auth service and session skeleton. The list routes are wired to initial PostgreSQL repositories, require the first migration to be applied, and require an admin session token in `Authorization: Bearer <session_token>`.
+`GET /healthz` is functional. `POST /api/v1/auth/admin/login` uses the initial admin auth service and session skeleton. The users, plans, and subscriptions routes are wired to PostgreSQL repositories, require the first migration to be applied, and require an admin session token in `Authorization: Bearer <session_token>`.
 
 Conservative auth note:
 

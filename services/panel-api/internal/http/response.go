@@ -34,6 +34,14 @@ func WriteError(w http.ResponseWriter, status int, code string, message string) 
 	})
 }
 
+func WriteBadRequest(w http.ResponseWriter, message string) {
+	WriteError(w, http.StatusBadRequest, "bad_request", message)
+}
+
+func WriteNotFound(w http.ResponseWriter, resource string) {
+	WriteError(w, http.StatusNotFound, "not_found", resource+" not found")
+}
+
 func WriteStorageError(w http.ResponseWriter) {
 	WriteError(w, http.StatusInternalServerError, "storage_error", "storage operation failed")
 }
