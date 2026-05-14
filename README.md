@@ -128,4 +128,6 @@ make openapi-lint
 make test
 ```
 
+GitHub Actions runs `make test` on push and pull requests to check panel-api tests and the OpenAPI draft.
+
 See [services/panel-api/README.md](/Users/vaceslavibraev/Desktop/vpn_service/services/panel-api/README.md) for the full PostgreSQL, migration, first-admin, login, and protected endpoint verification flow.
