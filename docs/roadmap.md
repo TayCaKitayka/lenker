@@ -131,6 +131,25 @@ These topics are intentionally outside the four MVP phases:
 - iOS support
 - additional production protocol paths
 
+## Post-MVP Business and Monetization Milestones
+
+These milestones are business planning items for after the self-hosted core is working. They must not be added to `MVP v0.1` implementation scope.
+
+- Lenker Cloud architecture draft for hosted panel operations
+- managed nodes operations model
+- paid support policy and support boundaries
+- marketplace verification and governance policy
+- provider manifest signing model for future marketplace trust
+- dynamic branding model before any white-label build work
+- enterprise governance scope, including advanced RBAC, audit retention, SSO, and SLA boundaries
+- billing plugin interface draft based on existing API and webhook boundaries
+- migration services plan for Marzban, 3x-ui, Hiddify Manager, and custom panels
+- trademark and naming policy for official Lenker services and builds
+
+Conservative note:
+
+Commercial work should start around hosting, support, and managed operations after the open-source self-host core is usable. Marketplace ranking, payment processing, commission flow, white-label builds, enterprise SSO, and full billing remain outside the nearest implementation scope.
+
 ## Conservative Decisions
 
 ### Conservative choice: no marketplace phase inside MVP v0.1
