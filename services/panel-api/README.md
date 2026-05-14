@@ -78,6 +78,10 @@ Use the token returned by admin login:
 Authorization: Bearer <session_token>
 ```
 
+OpenAPI draft:
+
+- [docs/openapi/panel-api.v1.yaml](/Users/vaceslavibraev/Desktop/vpn_service/docs/openapi/panel-api.v1.yaml)
+
 Not included here yet:
 
 - delete operations

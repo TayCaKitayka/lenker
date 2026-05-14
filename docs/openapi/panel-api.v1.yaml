@@ -1,0 +1,756 @@
+openapi: 3.0.3
+info:
+  title: Lenker Panel API
+  version: 0.1.0-draft
+  description: Draft OpenAPI contract for the currently implemented Lenker panel-api MVP v0.1 backend surface.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Plans
+  - name: Subscriptions
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthEnvelope"
+  /api/v1/auth/admin/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate a panel admin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: Admin authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/InactiveAdmin"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/users:
+    get:
+      tags: [Users]
+      summary: List users
+      responses:
+        "200":
+          description: Users list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Users]
+      summary: Create a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Users]
+      summary: Get a user
+      responses:
+        "200":
+          description: User details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      tags: [Users]
+      summary: Update a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: User updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/users/{id}/suspend:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Users]
+      summary: Suspend a user
+      responses:
+        "200":
+          description: User suspended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/users/{id}/activate:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Users]
+      summary: Activate a user
+      responses:
+        "200":
+          description: User activated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/plans:
+    get:
+      tags: [Plans]
+      summary: List plans
+      responses:
+        "200":
+          description: Plans list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Plans]
+      summary: Create a plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanRequest"
+      responses:
+        "201":
+          description: Plan created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/plans/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Plans]
+      summary: Get a plan
+      responses:
+        "200":
+          description: Plan details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      tags: [Plans]
+      summary: Update a plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlanRequest"
+      responses:
+        "200":
+          description: Plan updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/plans/{id}/archive:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Plans]
+      summary: Archive a plan
+      responses:
+        "200":
+          description: Plan archived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/subscriptions:
+    get:
+      tags: [Subscriptions]
+      summary: List subscriptions
+      responses:
+        "200":
+          description: Subscriptions list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Subscriptions]
+      summary: Create a subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubscriptionRequest"
+      responses:
+        "201":
+          description: Subscription created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/subscriptions/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Subscriptions]
+      summary: Get a subscription
+      responses:
+        "200":
+          description: Subscription details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      tags: [Subscriptions]
+      summary: Update a subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSubscriptionRequest"
+      responses:
+        "200":
+          description: Subscription updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/subscriptions/{id}/renew:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Subscriptions]
+      summary: Manually renew a subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenewSubscriptionRequest"
+      responses:
+        "200":
+          description: Subscription renewed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: session-token
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Resource identifier.
+  responses:
+    BadRequest:
+      description: Invalid request body or validation failure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unauthorized:
+      description: Missing or invalid admin session token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidCredentials:
+      description: Admin credentials are invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InactiveAdmin:
+      description: Admin account is inactive.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InternalError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          description: Successful response payload.
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/APIError"
+    APIError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+    ErrorCode:
+      type: string
+      enum:
+        - bad_request
+        - unauthorized
+        - not_found
+        - validation_error
+        - storage_error
+        - internal_error
+        - invalid_credentials
+        - inactive_admin
+    HealthEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [ok]
+    AdminLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AdminLoginEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [admin, session]
+              properties:
+                admin:
+                  $ref: "#/components/schemas/Admin"
+                session:
+                  $ref: "#/components/schemas/AdminSession"
+    Admin:
+      type: object
+      required: [id, email, status, two_factor_enabled, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [active, suspended]
+        two_factor_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminSession:
+      type: object
+      required: [id, admin_id, token, expires_at, created_at]
+      properties:
+        id:
+          type: string
+        admin_id:
+          type: string
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    User:
+      type: object
+      required: [id, email, status, display_name]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [active, suspended, expired]
+        display_name:
+          type: string
+    UserEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/User"
+    UserListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/User"
+    CreateUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+    Plan:
+      type: object
+      required: [id, name, duration_days, device_limit, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        duration_days:
+          type: integer
+          minimum: 1
+        traffic_limit_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        device_limit:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [active, archived]
+    PlanEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Plan"
+    PlanListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Plan"
+    CreatePlanRequest:
+      type: object
+      required: [name, duration_days, device_limit]
+      properties:
+        name:
+          type: string
+        duration_days:
+          type: integer
+          minimum: 1
+        traffic_limit_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        device_limit:
+          type: integer
+          minimum: 1
+    UpdatePlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        duration_days:
+          type: integer
+          minimum: 1
+        traffic_limit_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        clear_traffic_limit:
+          type: boolean
+        device_limit:
+          type: integer
+          minimum: 1
+    Subscription:
+      type: object
+      required:
+        - id
+        - user_id
+        - plan_id
+        - status
+        - starts_at
+        - expires_at
+        - traffic_used_bytes
+        - device_limit
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        plan_id:
+          type: string
+        status:
+          type: string
+          enum: [active, expired, suspended]
+        starts_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        traffic_limit_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        traffic_used_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        device_limit:
+          type: integer
+          minimum: 1
+        preferred_region:
+          type: string
+          nullable: true
+    SubscriptionEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Subscription"
+    SubscriptionListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Subscription"
+    CreateSubscriptionRequest:
+      type: object
+      required: [user_id, plan_id]
+      properties:
+        user_id:
+          type: string
+        plan_id:
+          type: string
+        preferred_region:
+          type: string
+          nullable: true
+    UpdateSubscriptionRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, expired, suspended]
+        traffic_limit_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+        clear_traffic_limit:
+          type: boolean
+        device_limit:
+          type: integer
+          minimum: 1
+        preferred_region:
+          type: string
+          nullable: true
+        clear_preferred_region:
+          type: boolean
+    RenewSubscriptionRequest:
+      type: object
+      required: [extend_days]
+      properties:
+        extend_days:
+          type: integer
+          minimum: 1

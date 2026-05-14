@@ -4,6 +4,8 @@ Lenker is an open-source VPN ecosystem for providers and users.
 
 This repository currently contains the initial monorepo skeleton for `MVP v0.1`. The scope is intentionally narrow and follows the documents in [docs/MVP_SPEC.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/MVP_SPEC.md), [docs/architecture.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/architecture.md), [docs/database.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/database.md), [docs/api.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/api.md), and [docs/roadmap.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/roadmap.md).
 
+The current implemented panel API draft is documented in [docs/openapi/panel-api.v1.yaml](/Users/vaceslavibraev/Desktop/vpn_service/docs/openapi/panel-api.v1.yaml).
+
 The project also keeps a public business boundary in [docs/business-model.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/business-model.md): commercial services may exist around hosted operations, support, and managed infrastructure, but the self-hosted core remains open-source and `MVP v0.1` does not include marketplace or billing.
 
 ## MVP v0.1 Scope
@@ -40,6 +42,7 @@ Excluded from this repository stage and from `MVP v0.1`:
 │   ├── architecture.md
 │   ├── business-model.md
 │   ├── database.md
+│   ├── openapi/
 │   └── roadmap.md
 ├── migrations/
 ├── services/
