@@ -40,11 +40,17 @@ Conservative choice:
 
 The migration runner is not embedded in `panel-api` yet. Keeping migrations as an explicit CLI operation avoids coupling service startup to schema changes before deployment rules are defined.
 
-## Admin Password Hashes
+## Admin Bootstrap
 
 Admin `password_hash` values must be bcrypt hashes.
 
-No seed admin is provided yet. Create the first admin explicitly in a local development database after applying migrations; a small dev-only bootstrap helper can be added later without coupling it to production startup.
+For local development, create the first admin after applying migrations:
+
+```sh
+ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='change-me-now' make bootstrap-admin
+```
+
+This helper is intentionally dev-only. It reads `LENKER_DATABASE_URL`, stores a bcrypt hash in `admins.password_hash`, and does not run automatically during service startup. If the admin already exists, it exits successfully and does not change the existing password.
 
 Planned areas:
 

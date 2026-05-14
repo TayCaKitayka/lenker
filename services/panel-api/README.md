@@ -108,3 +108,120 @@ make migrate-up
 make migrate-down
 VERSION=1 make migrate-force
 ```
+
+## Local Development Bootstrap
+
+This flow is for a local development database only. It is not a production installer.
+
+Install PostgreSQL using the package manager for your OS. Examples:
+
+```sh
+# macOS with Homebrew
+brew install postgresql@16
+brew services start postgresql@16
+
+# Debian/Ubuntu
+sudo apt-get install postgresql
+sudo systemctl start postgresql
+```
+
+Create a local database and user:
+
+```sh
+createuser lenker --pwprompt
+createdb -O lenker lenker
+```
+
+Export the database URL:
+
+```sh
+export LENKER_DATABASE_URL='postgres://lenker:lenker@localhost:5432/lenker?sslmode=disable'
+export LENKER_DATABASE_PING=true
+```
+
+Apply migrations from the repository root:
+
+```sh
+make migrate-up
+```
+
+Create the first local admin:
+
+```sh
+ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='change-me-now' make bootstrap-admin
+```
+
+The bootstrap helper stores a bcrypt password hash. If the admin already exists, it prints a clear message and does not change the password.
+
+Run the API:
+
+```sh
+make run-panel-api
+```
+
+Check health:
+
+```sh
+curl -i http://localhost:8080/healthz
+```
+
+Login:
+
+```sh
+curl -s http://localhost:8080/api/v1/auth/admin/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"owner@example.com","password":"change-me-now"}'
+```
+
+Copy `data.session.token` from the response and use it as a Bearer token:
+
+```sh
+export LENKER_ADMIN_TOKEN='<session_token>'
+```
+
+Create and inspect a user:
+
+```sh
+curl -s http://localhost:8080/api/v1/users \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@example.com","display_name":"Test User"}'
+
+curl -s http://localhost:8080/api/v1/users \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Create and inspect a plan:
+
+```sh
+curl -s http://localhost:8080/api/v1/plans \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Monthly","duration_days":30,"device_limit":3}'
+
+curl -s http://localhost:8080/api/v1/plans \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Create and inspect a subscription using the `id` values returned by the user and plan calls:
+
+```sh
+curl -s http://localhost:8080/api/v1/subscriptions \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"<user_id>","plan_id":"<plan_id>"}'
+
+curl -s http://localhost:8080/api/v1/subscriptions \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Useful local targets from the repository root:
+
+```sh
+make migrate-up
+make migrate-down
+VERSION=1 make migrate-force
+ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='change-me-now' make bootstrap-admin
+make run-panel-api
+make test-panel-api
+```

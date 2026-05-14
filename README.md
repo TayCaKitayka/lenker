@@ -114,3 +114,13 @@ make migrate-up
 make migrate-down
 VERSION=1 make migrate-force
 ```
+
+Local development helpers are also available:
+
+```sh
+ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='change-me-now' make bootstrap-admin
+make run-panel-api
+make test-panel-api
+```
+
+See [services/panel-api/README.md](/Users/vaceslavibraev/Desktop/vpn_service/services/panel-api/README.md) for the full PostgreSQL, migration, first-admin, login, and protected endpoint verification flow.
