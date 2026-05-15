@@ -24,7 +24,8 @@ a {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -78,6 +79,7 @@ input {
   font-weight: 700;
 }
 
+.select-field,
 .text-field {
   width: 100%;
   padding: 12px 14px;
@@ -88,9 +90,14 @@ input {
   outline: none;
 }
 
+.select-field:focus,
 .text-field:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.select-field {
+  appearance: none;
 }
 
 .primary-button,
@@ -409,6 +416,10 @@ input {
   width: 100%;
   border-collapse: collapse;
   min-width: 760px;
+}
+
+.subscriptions-table {
+  min-width: 1120px;
 }
 
 .data-table th,

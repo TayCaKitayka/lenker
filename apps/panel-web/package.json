@@ -11,6 +11,7 @@
     "test:session": "tsc --module commonjs --target ES2020 --lib ES2020,DOM --skipLibCheck --outDir ../../node_modules/.cache/panel-web-session-test src/lib/session.ts src/lib/session.test.ts && node ../../node_modules/.cache/panel-web-session-test/session.test.js",
     "test:users": "tsc --module commonjs --target ES2020 --lib ES2020,DOM --skipLibCheck --outDir ../../node_modules/.cache/panel-web-users-test src/lib/userForm.ts src/lib/userForm.test.ts && node ../../node_modules/.cache/panel-web-users-test/userForm.test.js",
     "test:plans": "tsc --module commonjs --target ES2020 --lib ES2020,DOM --skipLibCheck --outDir ../../node_modules/.cache/panel-web-plans-test src/lib/planForm.ts src/lib/planForm.test.ts && node ../../node_modules/.cache/panel-web-plans-test/planForm.test.js",
+    "test:subscriptions": "tsc --module commonjs --target ES2020 --lib ES2020,DOM --skipLibCheck --outDir ../../node_modules/.cache/panel-web-subscriptions-test src/lib/subscriptionForm.ts src/lib/subscriptionForm.test.ts && node ../../node_modules/.cache/panel-web-subscriptions-test/subscriptionForm.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

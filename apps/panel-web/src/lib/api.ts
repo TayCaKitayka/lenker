@@ -22,6 +22,14 @@ interface PlanResponse {
   data: Plan;
 }
 
+interface SubscriptionListResponse {
+  data: Subscription[];
+}
+
+interface SubscriptionResponse {
+  data: Subscription;
+}
+
 interface ApiErrorResponse {
   error?: {
     code?: string;
@@ -68,6 +76,38 @@ export interface UpdatePlanInput {
   traffic_limit_bytes?: number | null;
   clear_traffic_limit?: boolean;
   device_limit?: number;
+}
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  status: "active" | "expired" | "suspended";
+  starts_at: string;
+  expires_at: string;
+  traffic_limit_bytes: number | null;
+  traffic_used_bytes: number;
+  device_limit: number;
+  preferred_region: string | null;
+}
+
+export interface CreateSubscriptionInput {
+  user_id: string;
+  plan_id: string;
+  preferred_region?: string | null;
+}
+
+export interface UpdateSubscriptionInput {
+  status?: "active" | "expired" | "suspended";
+  traffic_limit_bytes?: number | null;
+  clear_traffic_limit?: boolean;
+  device_limit?: number;
+  preferred_region?: string | null;
+  clear_preferred_region?: boolean;
+}
+
+export interface RenewSubscriptionInput {
+  extend_days: number;
 }
 
 export class PanelApiError extends Error {
@@ -170,6 +210,51 @@ export async function archivePlan(session: StoredSession, planID: string): Promi
   const payload = await authorizedRequest<PlanResponse>(session, `/api/v1/plans/${encodeURIComponent(planID)}/archive`, {
     method: "POST",
   });
+  return payload.data;
+}
+
+export async function listSubscriptions(session: StoredSession): Promise<Subscription[]> {
+  const payload = await authorizedRequest<SubscriptionListResponse>(session, "/api/v1/subscriptions");
+  return payload.data;
+}
+
+export async function createSubscription(session: StoredSession, input: CreateSubscriptionInput): Promise<Subscription> {
+  const payload = await authorizedRequest<SubscriptionResponse>(session, "/api/v1/subscriptions", {
+    method: "POST",
+    body: input,
+  });
+  return payload.data;
+}
+
+export async function updateSubscription(
+  session: StoredSession,
+  subscriptionID: string,
+  input: UpdateSubscriptionInput,
+): Promise<Subscription> {
+  const payload = await authorizedRequest<SubscriptionResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}`,
+    {
+      method: "PATCH",
+      body: input,
+    },
+  );
+  return payload.data;
+}
+
+export async function renewSubscription(
+  session: StoredSession,
+  subscriptionID: string,
+  input: RenewSubscriptionInput,
+): Promise<Subscription> {
+  const payload = await authorizedRequest<SubscriptionResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/renew`,
+    {
+      method: "POST",
+      body: input,
+    },
+  );
   return payload.data;
 }
 

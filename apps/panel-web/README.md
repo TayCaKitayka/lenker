@@ -14,7 +14,8 @@ Current implemented foundation:
 - dashboard shell;
 - users management page with list, create, update, suspend, and activate flows;
 - plans management page with list, create, update, and archive flows;
-- navigation placeholders for subscriptions and nodes.
+- subscriptions management page with list, create, update, and renew flows;
+- navigation placeholder for nodes.
 
 Run from the repository root:
 
@@ -51,6 +52,12 @@ Focused plans form tests:
 
 ```sh
 npm --workspace @lenker/panel-web run test:plans
+```
+
+Focused subscriptions form tests:
+
+```sh
+npm --workspace @lenker/panel-web run test:subscriptions
 ```
 
 Planned `MVP v0.1` provider UI scope:

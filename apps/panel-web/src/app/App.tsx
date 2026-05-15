@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useMemo, useState } from "react";
 import { getApiBaseUrl, loginAdmin, PanelApiError } from "../lib/api";
 import { clearStoredSession, loadStoredSession, saveStoredSession, type StoredSession } from "../lib/session";
 import { PlansPage } from "../pages/PlansPage";
+import { SubscriptionsPage } from "../pages/SubscriptionsPage";
 import { UsersPage } from "../pages/UsersPage";
 
 interface LoginFormState {
@@ -174,9 +175,7 @@ export function App() {
         {activePage === "dashboard" ? <Dashboard expiresAtLabel={expiresAtLabel} /> : null}
         {activePage === "users" ? <UsersPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
         {activePage === "plans" ? <PlansPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
-        {activePage === "subscriptions" ? (
-          <PlaceholderPage title="Subscriptions" description="Subscription list and renew flows are planned for MVP v0.1." />
-        ) : null}
+        {activePage === "subscriptions" ? <SubscriptionsPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
         {activePage === "nodes" ? <PlaceholderPage title="Nodes" description="Node list, status, drain, and disable controls are planned." /> : null}
       </section>
     </main>
@@ -212,7 +211,7 @@ function Dashboard({ expiresAtLabel }: DashboardProps) {
       <section className="cards-grid">
         <StatusCard title="Users" value="Live" description="Create, edit, suspend, and activate users." />
         <StatusCard title="Plans" value="Live" description="Create, edit, and archive subscription plans." />
-        <StatusCard title="Subscriptions" value="Next" description="Create, inspect, and renew subscriptions." />
+        <StatusCard title="Subscriptions" value="Live" description="Create, update, and renew subscriptions." />
         <StatusCard title="Nodes" value="Next" description="Inspect status, drain, disable, and enable nodes." />
       </section>
     </>
