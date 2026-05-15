@@ -37,5 +37,5 @@ func NewRouter(deps RouterDeps) http.Handler {
 		}
 	}
 
-	return requestLogger(deps.Logger, mux)
+	return requestLogger(deps.Logger, withCORS(mux))
 }
