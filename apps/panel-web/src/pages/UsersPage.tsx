@@ -63,38 +63,36 @@ export function UsersPage({ session, onUnauthorized }: UsersPageProps) {
         <span className="pill">{users.length} total</span>
       </section>
 
-      <section className="surface-card">
-        {loadState === "loading" ? <p className="state-text">Loading users...</p> : null}
-        {loadState === "failed" ? <p className="error-text">{errorMessage}</p> : null}
-        {loadState === "loaded" && users.length === 0 ? <p className="state-text">No users yet.</p> : null}
+      {loadState === "loading" ? <p className="state-card">Loading users...</p> : null}
+      {loadState === "failed" ? <p className="state-card error-text">{errorMessage}</p> : null}
+      {loadState === "loaded" && users.length === 0 ? <p className="state-card">No users yet.</p> : null}
 
-        {users.length > 0 ? (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Display name</th>
-                  <th>Status</th>
-                  <th>ID</th>
+      {users.length > 0 ? (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Display name</th>
+                <th>Status</th>
+                <th>ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td>{user.email}</td>
+                  <td>{user.display_name || "-"}</td>
+                  <td>
+                    <span className={`status-badge status-${user.status}`}>{user.status}</span>
+                  </td>
+                  <td className="mono-cell">{user.id}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td>{user.email}</td>
-                    <td>{user.display_name || "-"}</td>
-                    <td>
-                      <span className={`status-badge status-${user.status}`}>{user.status}</span>
-                    </td>
-                    <td className="mono-cell">{user.id}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }
