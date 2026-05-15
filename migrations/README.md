@@ -57,8 +57,9 @@ Planned areas:
 - admin and RBAC tables
 - users and identities
 - plans and subscriptions
+- nodes and node registrations
 - devices and subscription keys
-- nodes and protocol profiles
+- protocol profiles
 - usage accounting
 - API tokens and webhooks
 - audit and config revision records

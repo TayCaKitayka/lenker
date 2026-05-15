@@ -147,6 +147,10 @@ PostgreSQL stores:
 - bootstrap uses one-time registration material
 - config bundles are signed
 
+Current implementation note:
+
+The first contract slice provides registration and heartbeat endpoints plus node-agent local health/status endpoints. Full mTLS establishment, certificate rotation, signed config delivery, Xray process control, and rollback execution are still skeleton work.
+
 ### Boundary 3: User App to Panel
 
 - protected by standard HTTPS

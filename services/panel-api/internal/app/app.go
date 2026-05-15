@@ -15,6 +15,7 @@ import (
 	"github.com/lenker/lenker/services/panel-api/internal/auth"
 	"github.com/lenker/lenker/services/panel-api/internal/config"
 	httpapi "github.com/lenker/lenker/services/panel-api/internal/http"
+	"github.com/lenker/lenker/services/panel-api/internal/nodes"
 	"github.com/lenker/lenker/services/panel-api/internal/plans"
 	"github.com/lenker/lenker/services/panel-api/internal/storage"
 	"github.com/lenker/lenker/services/panel-api/internal/subscriptions"
@@ -44,6 +45,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		Users:         users.NewHandler(logger, store.Users(), adminSession.RequireAdmin).WithAudit(auditRecorder),
 		Plans:         plans.NewHandler(logger, store.Plans(), adminSession.RequireAdmin).WithAudit(auditRecorder),
 		Subscriptions: subscriptions.NewHandler(logger, store.Subscriptions(), adminSession.RequireAdmin).WithAudit(auditRecorder),
+		Nodes:         nodes.NewHandler(logger, store.Nodes()),
 	})
 
 	server := &http.Server{

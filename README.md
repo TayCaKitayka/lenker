@@ -72,7 +72,7 @@ Excluded from this repository stage and from `MVP v0.1`:
 
 This repository now includes the first `panel-api` backend foundation. It prepares the service entrypoint, config loading, HTTP routing, health checks, structured logging, graceful shutdown, PostgreSQL storage bootstrap, basic repository interfaces, minimal admin login foundation, and initial PostgreSQL migrations.
 
-It does not include production business logic, billing, marketplace features, or VPN/Xray runtime logic yet.
+It also includes the first `node-agent` foundation and a minimal panel-api/node-agent registration and heartbeat contract. It does not include production billing, marketplace features, or VPN/Xray runtime logic yet.
 
 ## Backend Foundation
 
@@ -103,6 +103,8 @@ The service exposes the first admin panel API slice:
 - `GET /api/v1/subscriptions/{id}`
 - `PATCH /api/v1/subscriptions/{id}`
 - `POST /api/v1/subscriptions/{id}/renew`
+- `POST /api/v1/nodes/register`
+- `POST /api/v1/nodes/{id}/heartbeat`
 
 `GET /healthz` is functional. `POST /api/v1/auth/admin/login` uses the initial admin auth service and session skeleton. The users, plans, and subscriptions routes are wired to PostgreSQL repositories, require the first migration to be applied, and require an admin session token in `Authorization: Bearer <session_token>`.
 
@@ -123,7 +125,9 @@ Local development helpers are also available:
 ```sh
 ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='change-me-now' make bootstrap-admin
 make run-panel-api
+make run-node-agent
 make test-panel-api
+make test-node-agent
 make openapi-lint
 make test
 ```

@@ -22,6 +22,7 @@ type Store struct {
 	users         UsersRepository
 	plans         PlansRepository
 	subscriptions SubscriptionsRepository
+	nodes         NodesRepository
 }
 
 func Open(ctx context.Context, cfg Config) (*Store, error) {
@@ -43,6 +44,7 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 		users:         NewUsersRepository(db),
 		plans:         NewPlansRepository(db),
 		subscriptions: NewSubscriptionsRepository(db),
+		nodes:         NewNodesRepository(db),
 	}, nil
 }
 
@@ -71,4 +73,8 @@ func (s *Store) Plans() PlansRepository {
 
 func (s *Store) Subscriptions() SubscriptionsRepository {
 	return s.subscriptions
+}
+
+func (s *Store) Nodes() NodesRepository {
+	return s.nodes
 }

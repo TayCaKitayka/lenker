@@ -1,9 +1,10 @@
 MIGRATIONS_DIR ?= migrations
 MIGRATE ?= migrate
 PANEL_API_DIR ?= services/panel-api
+NODE_AGENT_DIR ?= services/node-agent
 OPENAPI_SPEC ?= docs/openapi/panel-api.v1.yaml
 
-.PHONY: migrate-up migrate-down migrate-force bootstrap-admin run-panel-api test-panel-api openapi-lint validate-openapi test
+.PHONY: migrate-up migrate-down migrate-force bootstrap-admin run-panel-api run-node-agent test-panel-api test-node-agent openapi-lint validate-openapi test
 
 migrate-up:
 	@if [ -z "$$LENKER_DATABASE_URL" ]; then echo "LENKER_DATABASE_URL is required"; exit 1; fi
@@ -27,10 +28,16 @@ bootstrap-admin:
 run-panel-api:
 	cd $(PANEL_API_DIR) && go run ./cmd/panel-api
 
+run-node-agent:
+	cd $(NODE_AGENT_DIR) && go run ./cmd/node-agent
+
 test-panel-api:
 	cd $(PANEL_API_DIR) && go test ./...
+
+test-node-agent:
+	cd $(NODE_AGENT_DIR) && go test ./...
 
 openapi-lint validate-openapi:
 	@if command -v ruby >/dev/null 2>&1; then ruby scripts/validate-openapi.rb $(OPENAPI_SPEC); else echo "ruby not found; skipping OpenAPI validation"; fi
 
-test: test-panel-api openapi-lint
+test: test-panel-api test-node-agent openapi-lint

@@ -65,12 +65,19 @@ Implemented foundation routes:
 - `GET /api/v1/subscriptions/{id}`
 - `PATCH /api/v1/subscriptions/{id}`
 - `POST /api/v1/subscriptions/{id}/renew`
+- `POST /api/v1/nodes/register`
+- `POST /api/v1/nodes/{id}/heartbeat`
 
 Admin-only routes:
 
 - all `/api/v1/users*` routes
 - all `/api/v1/plans*` routes
 - all `/api/v1/subscriptions*` routes
+
+Node-agent contract routes:
+
+- `POST /api/v1/nodes/register` accepts the first node registration payload and returns a node token
+- `POST /api/v1/nodes/{id}/heartbeat` accepts a node heartbeat with `Authorization: Bearer <node_token>`
 
 Use the token returned by admin login:
 
@@ -93,6 +100,8 @@ Not included here yet:
 - RBAC permission engine
 - audit persistence
 - devices, key rotation, and export flows
+- full node orchestration engine
+- full mTLS or certificate rotation
 - billing
 - marketplace
 - VPN or Xray logic

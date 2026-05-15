@@ -200,6 +200,18 @@ Create a one-time node bootstrap token.
 
 Complete node registration. Intended for the node agent.
 
+Current implementation note:
+
+The first backend slice implements `POST /api/v1/nodes/register` with a bootstrap token payload and returns a node token for subsequent heartbeats. Full mTLS bootstrap and certificate rotation remain future work inside `MVP v0.1`.
+
+#### `POST /nodes/{nodeId}/heartbeat`
+
+Record a node-agent heartbeat.
+
+Current implementation note:
+
+The first backend slice accepts `Authorization: Bearer <node_token>` and updates basic node status, agent version, active revision, and last health timestamp. It does not store metrics, logs, config blobs, or traffic accounting.
+
 #### `GET /nodes/{nodeId}`
 
 Return node details.

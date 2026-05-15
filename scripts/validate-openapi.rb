@@ -15,7 +15,9 @@ EXPECTED_OPERATIONS = {
   "/api/v1/plans/{id}/archive" => %w[post],
   "/api/v1/subscriptions" => %w[get post],
   "/api/v1/subscriptions/{id}" => %w[get patch],
-  "/api/v1/subscriptions/{id}/renew" => %w[post]
+  "/api/v1/subscriptions/{id}/renew" => %w[post],
+  "/api/v1/nodes/register" => %w[post],
+  "/api/v1/nodes/{id}/heartbeat" => %w[post]
 }.freeze
 
 HTTP_METHODS = %w[get put post delete options head patch trace].freeze
