@@ -1,16 +1,49 @@
 # panel-web
 
-`panel-web` is the future React + TypeScript web application for provider operations.
+`panel-web` is the React + TypeScript web application for Lenker provider operations.
 
-Planned `MVP v0.1` scope:
+Current implemented foundation:
 
-- dashboard
-- users
-- plans
-- subscriptions
-- nodes
-- protocol profiles
-- API tokens and webhooks
-- audit log
+- Vite + React entrypoint;
+- TypeScript source compilation;
+- base responsive layout;
+- temporary local admin/session shell;
+- dashboard shell;
+- navigation placeholders for users, plans, subscriptions, and nodes.
 
-This directory currently contains only the minimal project manifests needed to start implementation later.
+Run from the repository root:
+
+```sh
+npm install
+npm run panel-web:dev
+```
+
+Build:
+
+```sh
+npm run panel-web:build
+```
+
+Type-check:
+
+```sh
+npm run panel-web:lint
+```
+
+Planned `MVP v0.1` provider UI scope:
+
+- real `panel-api` admin login;
+- protected dashboard shell;
+- users list/create/update/suspend/activate;
+- plans list/create/update/archive;
+- subscriptions list/create/renew;
+- nodes list/detail/drain/undrain/disable/enable;
+- loading, empty, unauthorized, and API error states.
+
+Not planned for this first UI layer:
+
+- marketplace UI;
+- billing UI;
+- marketing landing;
+- advanced analytics;
+- client app UI.
