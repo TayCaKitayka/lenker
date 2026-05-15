@@ -1,10 +1,18 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useMemo, useState } from "react";
 import { getApiBaseUrl, loginAdmin, PanelApiError } from "../lib/api";
 import { clearStoredSession, loadStoredSession, saveStoredSession, type StoredSession } from "../lib/session";
+import { UsersPage } from "../pages/UsersPage";
 
 interface LoginFormState {
   email: string;
   password: string;
+}
+
+type PanelPage = "dashboard" | "users" | "plans" | "subscriptions" | "nodes";
+
+interface NavigationItem {
+  page: PanelPage;
+  label: string;
 }
 
 const initialLoginFormState: LoginFormState = {
@@ -12,8 +20,17 @@ const initialLoginFormState: LoginFormState = {
   password: "",
 };
 
+const navigationItems: NavigationItem[] = [
+  { page: "dashboard", label: "Dashboard" },
+  { page: "users", label: "Users" },
+  { page: "plans", label: "Plans" },
+  { page: "subscriptions", label: "Subscriptions" },
+  { page: "nodes", label: "Nodes" },
+];
+
 export function App() {
   const [storedSession, setStoredSession] = useState<StoredSession | null>(() => loadStoredSession());
+  const [activePage, setActivePage] = useState<PanelPage>("dashboard");
   const [formState, setFormState] = useState<LoginFormState>(initialLoginFormState);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,6 +45,13 @@ export function App() {
       timeStyle: "short",
     }).format(new Date(storedSession.session.expires_at));
   }, [storedSession]);
+
+  const logout = useCallback(() => {
+    clearStoredSession();
+    setStoredSession(null);
+    setActivePage("dashboard");
+    setFormState(initialLoginFormState);
+  }, []);
 
   function updateFormField(fieldName: keyof LoginFormState, value: string) {
     setFormState((currentValue) => ({ ...currentValue, [fieldName]: value }));
@@ -61,12 +85,6 @@ export function App() {
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  function logout() {
-    clearStoredSession();
-    setStoredSession(null);
-    setFormState(initialLoginFormState);
   }
 
   if (!storedSession) {
@@ -123,11 +141,16 @@ export function App() {
           <h1>Provider Panel</h1>
         </div>
         <nav className="nav-list" aria-label="Primary navigation">
-          <a className="nav-link active" href="#dashboard">Dashboard</a>
-          <a className="nav-link" href="#users">Users</a>
-          <a className="nav-link" href="#plans">Plans</a>
-          <a className="nav-link" href="#subscriptions">Subscriptions</a>
-          <a className="nav-link" href="#nodes">Nodes</a>
+          {navigationItems.map((item) => (
+            <button
+              key={item.page}
+              className={item.page === activePage ? "nav-link active" : "nav-link"}
+              type="button"
+              onClick={() => setActivePage(item.page)}
+            >
+              {item.label}
+            </button>
+          ))}
         </nav>
       </aside>
 
@@ -142,33 +165,66 @@ export function App() {
           </button>
         </header>
 
-        <section className="hero-card" id="dashboard">
-          <p className="eyebrow">MVP v0.1</p>
-          <h2>Dashboard shell is ready</h2>
-          <p>
-            The React app now authenticates against panel-api, stores the admin session locally,
-            and renders the first provider dashboard shell.
-          </p>
-          <dl className="details-grid">
-            <div>
-              <dt>Session expires</dt>
-              <dd>{expiresAtLabel}</dd>
-            </div>
-            <div>
-              <dt>Backend target</dt>
-              <dd>{getApiBaseUrl()}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="cards-grid">
-          <StatusCard title="Users" value="Next" description="List, create, suspend, and activate users." />
-          <StatusCard title="Plans" value="Next" description="List and maintain subscription plans." />
-          <StatusCard title="Subscriptions" value="Next" description="Create, inspect, and renew subscriptions." />
-          <StatusCard title="Nodes" value="Next" description="Inspect status, drain, disable, and enable nodes." />
-        </section>
+        {activePage === "dashboard" ? <Dashboard expiresAtLabel={expiresAtLabel} /> : null}
+        {activePage === "users" ? <UsersPage session={storedSession} onUnauthorized={logout} /> : null}
+        {activePage === "plans" ? <PlaceholderPage title="Plans" description="Plan list and edit flows are next after users." /> : null}
+        {activePage === "subscriptions" ? (
+          <PlaceholderPage title="Subscriptions" description="Subscription list and renew flows are planned for MVP v0.1." />
+        ) : null}
+        {activePage === "nodes" ? <PlaceholderPage title="Nodes" description="Node list, status, drain, and disable controls are planned." /> : null}
       </section>
     </main>
+  );
+}
+
+interface DashboardProps {
+  expiresAtLabel: string;
+}
+
+function Dashboard({ expiresAtLabel }: DashboardProps) {
+  return (
+    <>
+      <section className="hero-card" id="dashboard">
+        <p className="eyebrow">MVP v0.1</p>
+        <h2>Dashboard shell is ready</h2>
+        <p>
+          The React app now authenticates against panel-api, stores the admin session locally,
+          and renders the first provider dashboard shell.
+        </p>
+        <dl className="details-grid">
+          <div>
+            <dt>Session expires</dt>
+            <dd>{expiresAtLabel}</dd>
+          </div>
+          <div>
+            <dt>Backend target</dt>
+            <dd>{getApiBaseUrl()}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="cards-grid">
+        <StatusCard title="Users" value="Live" description="Read-only user list is wired to panel-api." />
+        <StatusCard title="Plans" value="Next" description="List and maintain subscription plans." />
+        <StatusCard title="Subscriptions" value="Next" description="Create, inspect, and renew subscriptions." />
+        <StatusCard title="Nodes" value="Next" description="Inspect status, drain, disable, and enable nodes." />
+      </section>
+    </>
+  );
+}
+
+interface PlaceholderPageProps {
+  title: string;
+  description: string;
+}
+
+function PlaceholderPage({ title, description }: PlaceholderPageProps) {
+  return (
+    <section className="hero-card">
+      <p className="eyebrow">Coming next</p>
+      <h2>{title}</h2>
+      <p>{description}</p>
+    </section>
   );
 }
 
