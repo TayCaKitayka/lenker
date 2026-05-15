@@ -1,34 +1,104 @@
 # Lenker
 
-Lenker is an open-source VPN ecosystem for providers and users.
+English | [Русский](README.ru.md)
 
-This repository currently contains the initial monorepo skeleton for `MVP v0.1`. The scope is intentionally narrow and follows the documents in [docs/MVP_SPEC.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/MVP_SPEC.md), [docs/architecture.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/architecture.md), [docs/database.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/database.md), [docs/api.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/api.md), and [docs/roadmap.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/roadmap.md).
+Lenker is an early-stage open-source VPN ecosystem for providers and users.
 
-The current implemented panel API draft is documented in [docs/openapi/panel-api.v1.yaml](/Users/vaceslavibraev/Desktop/vpn_service/docs/openapi/panel-api.v1.yaml).
+It is not a ready-to-run VPN service yet. The current repository focuses on the backend foundation for a provider control plane, managed nodes, subscriptions, and one MVP protocol path: `VLESS + Reality + XTLS Vision`.
 
-The project also keeps a public business boundary in [docs/business-model.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/business-model.md): commercial services may exist around hosted operations, support, and managed infrastructure, but the self-hosted core remains open-source and `MVP v0.1` does not include marketplace or billing.
+## What Is Lenker
+
+Lenker is intended to become a self-hosted VPN operations stack:
+
+```text
+provider panel -> node agent -> subscriptions -> client app -> future marketplace
+```
+
+The first product milestone, `MVP v0.1`, is deliberately narrow. It is about proving that a provider can manage users, plans, subscriptions, and nodes before the project grows into billing, marketplace, multi-protocol support, or production client distribution.
+
+## Current Status
+
+Lenker is under active foundation development.
+
+Current repository state:
+
+- `panel-api` foundation exists.
+- Admin auth uses bcrypt password verification.
+- Admin session middleware uses `Authorization: Bearer <session_token>`.
+- Admin CRUD slice exists for users, plans, and subscriptions.
+- Local development bootstrap can create the first admin.
+- PostgreSQL migrations exist for identity, subscriptions, and node foundation tables.
+- OpenAPI draft and lightweight validation are in place.
+- GitHub Actions runs backend and OpenAPI checks.
+- `node-agent` foundation exists.
+- `panel-api` and `node-agent` have a first registration and heartbeat contract.
+
+Not ready yet:
+
+- production VPN runtime
+- real Xray process control
+- signed config deployment
+- real rollback executor
+- full mTLS/certificate lifecycle
+- production client app
 
 ## MVP v0.1 Scope
 
-Included:
+Included in `MVP v0.1`:
 
-- provider panel
+- provider panel backend
 - node agent
-- users, plans, subscriptions, devices
-- REST API v1
-- PostgreSQL-based data model
-- client app for Android, Windows, and macOS
-- single production protocol path: `VLESS + Reality + XTLS Vision`
+- users, plans, and subscriptions
+- node registration and heartbeat
+- PostgreSQL-backed state
+- REST API and OpenAPI draft
+- manual renewal, API, and webhook foundation
+- Android, Windows, and macOS client app target
+- one production protocol path: `VLESS + Reality + XTLS Vision`
 
-Excluded from this repository stage and from `MVP v0.1`:
+Explicitly not included in `MVP v0.1`:
 
-- marketplace
-- billing
+- marketplace implementation
+- built-in billing or payment processing
+- provider ranking, reviews, or commission flow
 - Telegram bot as a core module
-- multi-protocol production support beyond the main path
-- white-label provider builds
+- iOS or Linux client
+- production multi-protocol support
+- white-label builds
+- enterprise SSO
+- migration tools from other panels
+- full analytics or support ticketing
 
-## Monorepo Layout
+## What Works Today
+
+Backend foundation:
+
+- `GET /healthz`
+- `POST /api/v1/auth/admin/login`
+- admin-protected users API
+- admin-protected plans API
+- admin-protected subscriptions API
+- `POST /api/v1/nodes/register`
+- `POST /api/v1/nodes/{id}/heartbeat`
+
+Node-agent foundation:
+
+- `GET /healthz`
+- `GET /status`
+- env-based config loading
+- registration payload builder
+- heartbeat payload builder
+- config revision and rollback placeholder models
+
+Local tooling:
+
+- PostgreSQL migrations through `golang-migrate/migrate`
+- first-admin bootstrap CLI
+- OpenAPI validation
+- unit and contract tests
+- GitHub Actions CI
+
+## Repository Layout
 
 ```text
 .
@@ -37,101 +107,155 @@ Excluded from this repository stage and from `MVP v0.1`:
 │   └── panel-web/
 ├── docs/
 │   ├── adr/
+│   ├── openapi/
 │   ├── MVP_SPEC.md
 │   ├── api.md
 │   ├── architecture.md
 │   ├── business-model.md
 │   ├── database.md
-│   ├── openapi/
 │   └── roadmap.md
 ├── migrations/
+├── scripts/
 ├── services/
 │   ├── node-agent/
 │   └── panel-api/
+├── Makefile
+├── README.md
+├── README.ru.md
 ├── go.work
 └── package.json
 ```
 
-## Directory Guide
+## Quick Start
 
-- `services/panel-api` — Go service for the provider control plane
-- `services/node-agent` — Go service for managed node lifecycle
-- `apps/panel-web` — React + TypeScript provider UI
-- `apps/client-app` — Flutter client app for Android, Windows, and macOS
-- `migrations` — database migration files for PostgreSQL
-- `docs/adr` — architecture decision records
+Prerequisites for current backend work:
 
-## Conservative Decisions
+- Go 1.22+
+- Ruby, for the lightweight OpenAPI validator
+- PostgreSQL
+- `golang-migrate/migrate`
 
-- The panel backend and node agent are separate Go modules.
-- The web panel is prepared as a standalone React + TypeScript app.
-- The client app is prepared as a standalone Flutter app shell.
-- No repository area is created for marketplace or billing because they are out of scope for `MVP v0.1`.
-
-## Status
-
-This repository now includes the first `panel-api` backend foundation. It prepares the service entrypoint, config loading, HTTP routing, health checks, structured logging, graceful shutdown, PostgreSQL storage bootstrap, basic repository interfaces, minimal admin login foundation, and initial PostgreSQL migrations.
-
-It also includes the first `node-agent` foundation and a minimal panel-api/node-agent registration and heartbeat contract. It does not include production billing, marketplace features, or VPN/Xray runtime logic yet.
-
-## Backend Foundation
-
-Run the panel API from its module:
+Set a local database URL:
 
 ```sh
-cd services/panel-api
-go run ./cmd/panel-api
+export LENKER_DATABASE_URL='postgres://lenker:lenker@localhost:5432/lenker?sslmode=disable'
+export LENKER_DATABASE_PING=true
 ```
 
-The service exposes the first admin panel API slice:
-
-- `GET /healthz`
-- `POST /api/v1/auth/admin/login`
-- `GET /api/v1/users`
-- `POST /api/v1/users`
-- `GET /api/v1/users/{id}`
-- `PATCH /api/v1/users/{id}`
-- `POST /api/v1/users/{id}/suspend`
-- `POST /api/v1/users/{id}/activate`
-- `GET /api/v1/plans`
-- `POST /api/v1/plans`
-- `GET /api/v1/plans/{id}`
-- `PATCH /api/v1/plans/{id}`
-- `POST /api/v1/plans/{id}/archive`
-- `GET /api/v1/subscriptions`
-- `POST /api/v1/subscriptions`
-- `GET /api/v1/subscriptions/{id}`
-- `PATCH /api/v1/subscriptions/{id}`
-- `POST /api/v1/subscriptions/{id}/renew`
-- `POST /api/v1/nodes/register`
-- `POST /api/v1/nodes/{id}/heartbeat`
-
-`GET /healthz` is functional. `POST /api/v1/auth/admin/login` uses the initial admin auth service and session skeleton. The users, plans, and subscriptions routes are wired to PostgreSQL repositories, require the first migration to be applied, and require an admin session token in `Authorization: Bearer <session_token>`.
-
-Conservative auth note:
-
-Admin passwords are verified with bcrypt. Store bcrypt hashes in `admins.password_hash`.
-
-Migration helpers are available through `make`:
+Apply migrations:
 
 ```sh
 make migrate-up
-make migrate-down
-VERSION=1 make migrate-force
 ```
 
-Local development helpers are also available:
+Create the first local admin:
 
 ```sh
 ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='change-me-now' make bootstrap-admin
+```
+
+Run the panel API:
+
+```sh
 make run-panel-api
+```
+
+Run the node agent foundation:
+
+```sh
 make run-node-agent
-make test-panel-api
-make test-node-agent
-make openapi-lint
+```
+
+See [services/panel-api/README.md](services/panel-api/README.md) for a fuller local flow with curl examples.
+
+## Checks
+
+Run all current checks:
+
+```sh
 make test
 ```
 
-GitHub Actions runs `make test` on push and pull requests to check panel-api tests and the OpenAPI draft.
+This runs:
 
-See [services/panel-api/README.md](/Users/vaceslavibraev/Desktop/vpn_service/services/panel-api/README.md) for the full PostgreSQL, migration, first-admin, login, and protected endpoint verification flow.
+- `go test ./...` in `services/panel-api`
+- `go test ./...` in `services/node-agent`
+- OpenAPI validation for `docs/openapi/panel-api.v1.yaml`
+
+Focused commands:
+
+```sh
+make test-panel-api
+make test-node-agent
+make openapi-lint
+```
+
+GitHub Actions runs `make test` on push and pull requests.
+
+## Documentation
+
+- [MVP spec](docs/MVP_SPEC.md)
+- [Architecture](docs/architecture.md)
+- [Database model](docs/database.md)
+- [REST API plan](docs/api.md)
+- [OpenAPI draft](docs/openapi/panel-api.v1.yaml)
+- [OpenAPI notes](docs/openapi/README.md)
+- [Roadmap](docs/roadmap.md)
+- [Business model boundary](docs/business-model.md)
+- [Architecture decision records](docs/adr/README.md)
+- [panel-api README](services/panel-api/README.md)
+- [node-agent README](services/node-agent/README.md)
+
+## Business Model Boundary
+
+Lenker is planned as an open-source core with commercial services around it, not as a crippled self-host demo.
+
+The self-hosted core should remain useful for small providers. Future commercial work may include Lenker Cloud, managed nodes, paid support, enterprise governance, billing plugins, migration services, and marketplace trust services.
+
+The project must not monetize user data, DNS history, browsing history, connection logs, hidden telemetry, provider logs, or pay-to-win marketplace ranking.
+
+Marketplace and billing are not part of `MVP v0.1`.
+
+## Security And Privacy Stance
+
+Lenker should be privacy-first by default:
+
+- minimal logging by default
+- no sale of user data or traffic history
+- no hidden telemetry
+- no billing or marketplace tables in the MVP schema
+- session and node tokens are stored as hashes where implemented
+- full mTLS and certificate rotation are planned but not complete yet
+
+This repository is not production-hardened yet. Do not treat it as a complete secure VPN platform.
+
+## Roadmap
+
+Current direction:
+
+1. Finish backend foundation for provider operations.
+2. Build node registration, heartbeat, config revision, apply, and rollback foundations.
+3. Add panel web flows for admins.
+4. Add the client app flow for Android, Windows, and macOS.
+5. Harden release packaging, deployment docs, security policy, backup, and recovery.
+
+Post-MVP topics such as marketplace, provider verification, billing adapters, Lenker Cloud, paid support, and enterprise features are tracked as later work.
+
+## Contributing Status
+
+The project is not ready for broad external contribution yet. Early issues, architecture feedback, security concerns, and focused backend review are useful.
+
+Before opening large PRs, align with the fixed `MVP v0.1` scope and avoid adding marketplace, billing, multi-protocol runtime, or production VPN logic prematurely.
+
+## License Note
+
+The final license policy is not fully settled yet.
+
+The current recommendation is:
+
+- AGPL-3.0 for `panel-api` and `node-agent`
+- a compatible open-source license for `panel-web` and `client-app`
+- permissive licensing for future SDKs/specs where useful
+- separate trademark policy for the Lenker name and logo
+
+Do not assume final licensing until a `LICENSE` file and license ADR are added.
