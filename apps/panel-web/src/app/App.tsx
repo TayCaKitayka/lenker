@@ -46,12 +46,17 @@ export function App() {
     }).format(new Date(storedSession.session.expires_at));
   }, [storedSession]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback((message?: string) => {
     clearStoredSession();
     setStoredSession(null);
     setActivePage("dashboard");
     setFormState(initialLoginFormState);
+    setErrorMessage(message ?? null);
   }, []);
+
+  const handleUnauthorized = useCallback(() => {
+    logout("Session expired. Sign in again.");
+  }, [logout]);
 
   function updateFormField(fieldName: keyof LoginFormState, value: string) {
     setFormState((currentValue) => ({ ...currentValue, [fieldName]: value }));
@@ -160,13 +165,13 @@ export function App() {
             <p className="muted-text">Signed in as</p>
             <strong>{storedSession.admin.email}</strong>
           </div>
-          <button className="secondary-button" type="button" onClick={logout}>
+          <button className="secondary-button" type="button" onClick={() => logout()}>
             Sign out
           </button>
         </header>
 
         {activePage === "dashboard" ? <Dashboard expiresAtLabel={expiresAtLabel} /> : null}
-        {activePage === "users" ? <UsersPage session={storedSession} onUnauthorized={logout} /> : null}
+        {activePage === "users" ? <UsersPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
         {activePage === "plans" ? <PlaceholderPage title="Plans" description="Plan list and edit flows are next after users." /> : null}
         {activePage === "subscriptions" ? (
           <PlaceholderPage title="Subscriptions" description="Subscription list and renew flows are planned for MVP v0.1." />
@@ -188,7 +193,7 @@ function Dashboard({ expiresAtLabel }: DashboardProps) {
         <p className="eyebrow">MVP v0.1</p>
         <h2>Dashboard shell is ready</h2>
         <p>
-          The React app now authenticates against panel-api, stores the admin session locally,
+          The React app authenticates against panel-api, stores the admin session for the current browser tab,
           and renders the first provider dashboard shell.
         </p>
         <dl className="details-grid">

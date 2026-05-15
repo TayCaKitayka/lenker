@@ -7,7 +7,10 @@ Current implemented foundation:
 - Vite + React entrypoint;
 - TypeScript source compilation;
 - base responsive layout;
-- temporary local admin/session shell;
+- admin login against `panel-api`;
+- admin session stored in `sessionStorage`;
+- expired or malformed admin sessions are cleared on load;
+- unauthorized API responses clear the session and return the admin to login;
 - dashboard shell;
 - navigation placeholders for users, plans, subscriptions, and nodes.
 
@@ -28,6 +31,12 @@ Type-check:
 
 ```sh
 npm run panel-web:lint
+```
+
+Focused session utility tests:
+
+```sh
+npm --workspace @lenker/panel-web run test:session
 ```
 
 Planned `MVP v0.1` provider UI scope:
