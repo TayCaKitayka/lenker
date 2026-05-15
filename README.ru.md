@@ -31,7 +31,8 @@ Lenker находится в активной foundation-разработке.
 - OpenAPI draft и lightweight validation;
 - GitHub Actions для backend и OpenAPI checks;
 - foundation для `node-agent`;
-- первый contract между `panel-api` и `node-agent` для bootstrap token, registration и heartbeat.
+- первый contract между `panel-api` и `node-agent` для bootstrap token, registration и heartbeat;
+- Docker local dev profile для PostgreSQL, migrations, `panel-api` и `node-agent` smoke checks.
 
 Пока не готово:
 
@@ -96,6 +97,7 @@ Local tooling:
 
 - PostgreSQL migrations через `golang-migrate/migrate`;
 - first-admin bootstrap CLI;
+- Docker Compose local dev profile;
 - OpenAPI validation;
 - unit и contract tests;
 - GitHub Actions CI.
@@ -107,6 +109,8 @@ Local tooling:
 ├── apps/
 │   ├── client-app/
 │   └── panel-web/
+├── deploy/
+│   └── docker/
 ├── docs/
 │   ├── adr/
 │   ├── openapi/
@@ -130,7 +134,35 @@ Local tooling:
 
 ## Быстрый Старт
 
-Для текущей backend-разработки нужны:
+Самый быстрый local smoke path - Docker Compose:
+
+```sh
+make docker-build
+make docker-up
+make docker-bootstrap-admin
+make docker-smoke
+```
+
+Эта команда поднимает PostgreSQL, применяет migrations, запускает `panel-api`, запускает `node-agent`, создаёт local admin и проверяет оба health endpoint.
+
+Default local admin после `make docker-bootstrap-admin`:
+
+```text
+email: owner@example.com
+password: change-me-now
+```
+
+Остановить local Docker stack:
+
+```sh
+make docker-down
+```
+
+Docker-specific заметки есть в [deploy/docker/README.md](deploy/docker/README.md).
+
+## Ручная Локальная Разработка
+
+Для ручной backend-разработки нужны:
 
 - Go 1.22+;
 - Ruby для lightweight OpenAPI validator;
@@ -190,6 +222,7 @@ make test
 make test-panel-api
 make test-node-agent
 make openapi-lint
+make docker-smoke
 ```
 
 GitHub Actions запускает `make test` на push и pull requests.
@@ -205,6 +238,7 @@ GitHub Actions запускает `make test` на push и pull requests.
 - [Roadmap](docs/roadmap.md)
 - [Business model boundary](docs/business-model.md)
 - [Node bootstrap smoke checklist](docs/smoke/node-bootstrap.md)
+- [Docker local dev](deploy/docker/README.md)
 - [Licensing notes](docs/licensing.md)
 - [Architecture decision records](docs/adr/README.md)
 - [panel-api README](services/panel-api/README.md)
