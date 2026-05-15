@@ -14,6 +14,14 @@ interface UserResponse {
   data: User;
 }
 
+interface PlanListResponse {
+  data: Plan[];
+}
+
+interface PlanResponse {
+  data: Plan;
+}
+
 interface ApiErrorResponse {
   error?: {
     code?: string;
@@ -36,6 +44,30 @@ export interface CreateUserInput {
 export interface UpdateUserInput {
   email?: string;
   display_name?: string;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  duration_days: number;
+  traffic_limit_bytes: number | null;
+  device_limit: number;
+  status: "active" | "archived";
+}
+
+export interface CreatePlanInput {
+  name: string;
+  duration_days: number;
+  traffic_limit_bytes?: number | null;
+  device_limit: number;
+}
+
+export interface UpdatePlanInput {
+  name?: string;
+  duration_days?: number;
+  traffic_limit_bytes?: number | null;
+  clear_traffic_limit?: boolean;
+  device_limit?: number;
 }
 
 export class PanelApiError extends Error {
@@ -108,6 +140,34 @@ export async function suspendUser(session: StoredSession, userID: string): Promi
 
 export async function activateUser(session: StoredSession, userID: string): Promise<User> {
   const payload = await authorizedRequest<UserResponse>(session, `/api/v1/users/${encodeURIComponent(userID)}/activate`, {
+    method: "POST",
+  });
+  return payload.data;
+}
+
+export async function listPlans(session: StoredSession): Promise<Plan[]> {
+  const payload = await authorizedRequest<PlanListResponse>(session, "/api/v1/plans");
+  return payload.data;
+}
+
+export async function createPlan(session: StoredSession, input: CreatePlanInput): Promise<Plan> {
+  const payload = await authorizedRequest<PlanResponse>(session, "/api/v1/plans", {
+    method: "POST",
+    body: input,
+  });
+  return payload.data;
+}
+
+export async function updatePlan(session: StoredSession, planID: string, input: UpdatePlanInput): Promise<Plan> {
+  const payload = await authorizedRequest<PlanResponse>(session, `/api/v1/plans/${encodeURIComponent(planID)}`, {
+    method: "PATCH",
+    body: input,
+  });
+  return payload.data;
+}
+
+export async function archivePlan(session: StoredSession, planID: string): Promise<Plan> {
+  const payload = await authorizedRequest<PlanResponse>(session, `/api/v1/plans/${encodeURIComponent(planID)}/archive`, {
     method: "POST",
   });
   return payload.data;

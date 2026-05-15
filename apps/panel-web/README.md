@@ -13,7 +13,8 @@ Current implemented foundation:
 - unauthorized API responses clear the session and return the admin to login;
 - dashboard shell;
 - users management page with list, create, update, suspend, and activate flows;
-- navigation placeholders for plans, subscriptions, and nodes.
+- plans management page with list, create, update, and archive flows;
+- navigation placeholders for subscriptions and nodes.
 
 Run from the repository root:
 
@@ -44,6 +45,12 @@ Focused users form tests:
 
 ```sh
 npm --workspace @lenker/panel-web run test:users
+```
+
+Focused plans form tests:
+
+```sh
+npm --workspace @lenker/panel-web run test:plans
 ```
 
 Planned `MVP v0.1` provider UI scope:
