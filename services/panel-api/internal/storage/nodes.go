@@ -6,9 +6,12 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/lenker/lenker/services/panel-api/internal/configbundle"
 )
 
 var (
@@ -74,6 +77,28 @@ type HeartbeatInput struct {
 	SentAt         time.Time
 }
 
+type ConfigRevision struct {
+	ID                     string         `json:"id"`
+	NodeID                 string         `json:"node_id"`
+	RevisionNumber         int            `json:"revision_number"`
+	BundleHash             string         `json:"bundle_hash"`
+	Signature              string         `json:"signature"`
+	Signer                 string         `json:"signer"`
+	Status                 string         `json:"status"`
+	RollbackTargetRevision int            `json:"rollback_target_revision"`
+	Bundle                 map[string]any `json:"bundle"`
+	CreatedAt              time.Time      `json:"created_at"`
+	AppliedAt              *time.Time     `json:"applied_at"`
+	FailedAt               *time.Time     `json:"failed_at"`
+	RolledBackAt           *time.Time     `json:"rolled_back_at"`
+	ErrorMessage           string         `json:"error_message,omitempty"`
+}
+
+type CreateDummyConfigRevisionInput struct {
+	NodeID           string
+	CreatedByAdminID string
+}
+
 type NodesRepository interface {
 	List(ctx context.Context) ([]Node, error)
 	FindByID(ctx context.Context, id string) (Node, error)
@@ -84,6 +109,9 @@ type NodesRepository interface {
 	Undrain(ctx context.Context, id string) (Node, error)
 	Disable(ctx context.Context, id string) (Node, error)
 	Enable(ctx context.Context, id string) (Node, error)
+	CreateDummyConfigRevision(ctx context.Context, input CreateDummyConfigRevisionInput) (ConfigRevision, error)
+	ListConfigRevisions(ctx context.Context, nodeID string) ([]ConfigRevision, error)
+	FindConfigRevision(ctx context.Context, nodeID string, revisionID string) (ConfigRevision, error)
 }
 
 type nodesRepository struct {
@@ -404,6 +432,149 @@ func (r *nodesRepository) Enable(ctx context.Context, id string) (Node, error) {
 	})
 }
 
+func (r *nodesRepository) CreateDummyConfigRevision(ctx context.Context, input CreateDummyConfigRevisionInput) (ConfigRevision, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	defer tx.Rollback()
+
+	var currentRevision int
+	var status string
+	var drainState string
+	err = tx.QueryRowContext(ctx, `
+		SELECT active_revision, status, drain_state
+		FROM nodes
+		WHERE id = $1
+		FOR UPDATE
+	`, input.NodeID).Scan(&currentRevision, &status, &drainState)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ConfigRevision{}, ErrNotFound
+		}
+		return ConfigRevision{}, err
+	}
+	if status == "disabled" || drainState != "active" {
+		return ConfigRevision{}, ErrInvalidNodeTransition
+	}
+
+	var nextRevision int
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(revision_number), 0) + 1
+		FROM config_revisions
+		WHERE node_id = $1
+	`, input.NodeID).Scan(&nextRevision)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+
+	payload := map[string]any{
+		"kind":            "dummy",
+		"protocol":        "vless-reality-xtls-vision",
+		"xray_runtime":    false,
+		"generated_by":    "panel-api",
+		"schema_version":  "config-bundle.v1alpha1",
+		"revision_number": nextRevision,
+	}
+	bundleHash, err := configbundle.HashPayload(payload)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	bundle := configbundle.Bundle{
+		NodeID:                 input.NodeID,
+		RevisionNumber:         nextRevision,
+		Status:                 "pending",
+		BundleHash:             bundleHash,
+		Signer:                 configbundle.DefaultSigner,
+		RollbackTargetRevision: currentRevision,
+		Payload:                payload,
+	}
+	signature, err := configbundle.NewDevSigner().Sign(bundle)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	bundle.Signature = signature
+
+	bundleJSON, err := json.Marshal(bundle)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+
+	var createdBy sql.NullString
+	if input.CreatedByAdminID != "" {
+		createdBy = sql.NullString{String: input.CreatedByAdminID, Valid: true}
+	}
+
+	revision, err := scanConfigRevision(tx.QueryRowContext(ctx, `
+		INSERT INTO config_revisions (
+		    node_id,
+		    revision_number,
+		    bundle_hash,
+		    signature,
+		    signer,
+		    status,
+		    rollback_target_revision,
+		    bundle_json,
+		    created_by_admin_id
+		)
+		VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
+		RETURNING id::text, node_id::text, revision_number, bundle_hash, signature, signer, status, rollback_target_revision, bundle_json, created_at, applied_at, failed_at, rolled_back_at, error_message
+	`, input.NodeID, nextRevision, bundleHash, signature, configbundle.DefaultSigner, currentRevision, bundleJSON, createdBy))
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ConfigRevision{}, err
+	}
+	return revision, nil
+}
+
+func (r *nodesRepository) ListConfigRevisions(ctx context.Context, nodeID string) ([]ConfigRevision, error) {
+	if _, err := r.FindByID(ctx, nodeID); err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id::text, node_id::text, revision_number, bundle_hash, signature, signer, status, rollback_target_revision, bundle_json, created_at, applied_at, failed_at, rolled_back_at, error_message
+		FROM config_revisions
+		WHERE node_id = $1
+		ORDER BY revision_number DESC
+	`, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	revisions := []ConfigRevision{}
+	for rows.Next() {
+		revision, err := scanConfigRevision(rows)
+		if err != nil {
+			return nil, err
+		}
+		revisions = append(revisions, revision)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return revisions, nil
+}
+
+func (r *nodesRepository) FindConfigRevision(ctx context.Context, nodeID string, revisionID string) (ConfigRevision, error) {
+	revision, err := scanConfigRevision(r.db.QueryRowContext(ctx, `
+		SELECT id::text, node_id::text, revision_number, bundle_hash, signature, signer, status, rollback_target_revision, bundle_json, created_at, applied_at, failed_at, rolled_back_at, error_message
+		FROM config_revisions
+		WHERE node_id = $1
+		  AND id = $2
+	`, nodeID, revisionID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ConfigRevision{}, ErrNotFound
+		}
+		return ConfigRevision{}, err
+	}
+	return revision, nil
+}
+
 func newBootstrapToken() (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -480,6 +651,58 @@ func scanNode(row rowScanner) (Node, error) {
 		node.RegisteredAt = &registeredAt.Time
 	}
 	return node, nil
+}
+
+func scanConfigRevision(row rowScanner) (ConfigRevision, error) {
+	var revision ConfigRevision
+	var rollbackTarget sql.NullInt64
+	var bundleJSON []byte
+	var appliedAt sql.NullTime
+	var failedAt sql.NullTime
+	var rolledBackAt sql.NullTime
+	var errorMessage sql.NullString
+	err := row.Scan(
+		&revision.ID,
+		&revision.NodeID,
+		&revision.RevisionNumber,
+		&revision.BundleHash,
+		&revision.Signature,
+		&revision.Signer,
+		&revision.Status,
+		&rollbackTarget,
+		&bundleJSON,
+		&revision.CreatedAt,
+		&appliedAt,
+		&failedAt,
+		&rolledBackAt,
+		&errorMessage,
+	)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	if rollbackTarget.Valid {
+		revision.RollbackTargetRevision = int(rollbackTarget.Int64)
+	}
+	if appliedAt.Valid {
+		revision.AppliedAt = &appliedAt.Time
+	}
+	if failedAt.Valid {
+		revision.FailedAt = &failedAt.Time
+	}
+	if rolledBackAt.Valid {
+		revision.RolledBackAt = &rolledBackAt.Time
+	}
+	if errorMessage.Valid {
+		revision.ErrorMessage = errorMessage.String
+	}
+	if len(bundleJSON) > 0 {
+		var storedBundle configbundle.Bundle
+		if err := json.Unmarshal(bundleJSON, &storedBundle); err != nil {
+			return ConfigRevision{}, err
+		}
+		revision.Bundle = storedBundle.Payload
+	}
+	return revision, nil
 }
 
 type nodeTransition struct {

@@ -42,6 +42,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 		mux.Handle("POST /api/v1/nodes/{id}/undrain", h.adminOnly(http.HandlerFunc(h.Undrain)))
 		mux.Handle("POST /api/v1/nodes/{id}/disable", h.adminOnly(http.HandlerFunc(h.Disable)))
 		mux.Handle("POST /api/v1/nodes/{id}/enable", h.adminOnly(http.HandlerFunc(h.Enable)))
+		mux.Handle("POST /api/v1/nodes/{id}/config-revisions", h.adminOnly(http.HandlerFunc(h.CreateConfigRevision)))
+		mux.Handle("GET /api/v1/nodes/{id}/config-revisions", h.adminOnly(http.HandlerFunc(h.ListConfigRevisions)))
+		mux.Handle("GET /api/v1/nodes/{id}/config-revisions/{revisionId}", h.adminOnly(http.HandlerFunc(h.GetConfigRevision)))
 	}
 	mux.HandleFunc("POST /api/v1/nodes/register", h.Register)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", h.Heartbeat)
@@ -136,6 +139,68 @@ func (h *Handler) Disable(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Enable(w http.ResponseWriter, r *http.Request) {
 	h.transition(w, r, audit.ActionNodeEnable, h.nodes.Enable)
+}
+
+func (h *Handler) CreateConfigRevision(w http.ResponseWriter, r *http.Request) {
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	if nodeID == "" {
+		httpapi.WriteBadRequest(w, "node id is required")
+		return
+	}
+
+	admin, _ := auth.AdminFromContext(r.Context())
+	revision, err := h.nodes.CreateDummyConfigRevision(r.Context(), storage.CreateDummyConfigRevisionInput{
+		NodeID:           nodeID,
+		CreatedByAdminID: admin.ID,
+	})
+	if err != nil {
+		h.recordAdmin(r, audit.ActionNodeConfigRevisionCreate, nodeID, audit.OutcomeFailure, errorReason(err))
+		writeNodeError(w, err)
+		return
+	}
+
+	h.recordAdmin(r, audit.ActionNodeConfigRevisionCreate, nodeID, audit.OutcomeSuccess, "")
+	httpapi.WriteJSON(w, http.StatusCreated, httpapi.Response{Data: configRevisionResponse(revision)})
+}
+
+func (h *Handler) ListConfigRevisions(w http.ResponseWriter, r *http.Request) {
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	if nodeID == "" {
+		httpapi.WriteBadRequest(w, "node id is required")
+		return
+	}
+
+	revisions, err := h.nodes.ListConfigRevisions(r.Context(), nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+
+	data := make([]map[string]any, 0, len(revisions))
+	for _, revision := range revisions {
+		data = append(data, configRevisionResponse(revision))
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: data})
+}
+
+func (h *Handler) GetConfigRevision(w http.ResponseWriter, r *http.Request) {
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	revisionID := strings.TrimSpace(r.PathValue("revisionId"))
+	if nodeID == "" {
+		httpapi.WriteBadRequest(w, "node id is required")
+		return
+	}
+	if revisionID == "" {
+		httpapi.WriteBadRequest(w, "revision id is required")
+		return
+	}
+
+	revision, err := h.nodes.FindConfigRevision(r.Context(), nodeID, revisionID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: configRevisionResponse(revision)})
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -343,6 +408,25 @@ func nodeDetailResponse(node storage.Node) map[string]any {
 		"last_seen_at":       node.LastSeenAt,
 		"registered_at":      node.RegisteredAt,
 		"updated_at":         node.UpdatedAt,
+	}
+}
+
+func configRevisionResponse(revision storage.ConfigRevision) map[string]any {
+	return map[string]any{
+		"id":                       revision.ID,
+		"node_id":                  revision.NodeID,
+		"revision_number":          revision.RevisionNumber,
+		"status":                   revision.Status,
+		"bundle_hash":              revision.BundleHash,
+		"signature":                revision.Signature,
+		"signer":                   revision.Signer,
+		"rollback_target_revision": revision.RollbackTargetRevision,
+		"bundle":                   revision.Bundle,
+		"created_at":               revision.CreatedAt,
+		"applied_at":               revision.AppliedAt,
+		"failed_at":                revision.FailedAt,
+		"rolled_back_at":           revision.RolledBackAt,
+		"error_message":            revision.ErrorMessage,
 	}
 }
 

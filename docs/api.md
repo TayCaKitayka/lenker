@@ -274,6 +274,23 @@ successful heartbeat proves the node is active.
 
 Generate and deploy the next signed config revision.
 
+Current Stage C implementation note:
+
+The implemented foundation uses `POST /nodes/{nodeId}/config-revisions` to
+create signed dummy bundle metadata only. It stores revision number, status,
+bundle hash, signature, signer, rollback target metadata, and timestamps. It
+does not generate real Xray config, deliver config to an agent, apply config,
+restart processes, or execute rollback.
+
+#### `GET /nodes/{nodeId}/config-revisions`
+
+List stored config revision metadata for a node.
+
+#### `GET /nodes/{nodeId}/config-revisions/{revisionId}`
+
+Return one config revision metadata record and verify it belongs to the node in
+the path.
+
 #### `POST /nodes/{nodeId}/rollback`
 
 Roll back to the last known good config revision.

@@ -199,6 +199,115 @@ func TestNodeLifecycleInvalidTransition(t *testing.T) {
 	}
 }
 
+func TestCreateConfigRevisionSuccess(t *testing.T) {
+	repo := &fakeNodesRepository{revision: testConfigRevision("revision-1", "node-1", 1)}
+	handler := NewHandler(nil, repo, testAdminOnly)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.createdRevision.NodeID != "node-1" || repo.createdRevision.CreatedByAdminID != "admin-1" {
+		t.Fatalf("unexpected revision input: %#v", repo.createdRevision)
+	}
+	if !strings.Contains(response.Body.String(), `"revision_number":1`) {
+		t.Fatalf("expected revision response: %s", response.Body.String())
+	}
+}
+
+func TestCreateConfigRevisionNodeNotFound(t *testing.T) {
+	repo := &fakeNodesRepository{createRevisionErr: storage.ErrNotFound}
+	handler := NewHandler(nil, repo, testAdminOnly)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/missing/config-revisions", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCreateConfigRevisionDisabledNodeRejected(t *testing.T) {
+	repo := &fakeNodesRepository{createRevisionErr: storage.ErrInvalidNodeTransition}
+	handler := NewHandler(nil, repo, testAdminOnly)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "validation_error") {
+		t.Fatalf("expected validation_error response: %s", response.Body.String())
+	}
+}
+
+func TestListConfigRevisionsSuccess(t *testing.T) {
+	repo := &fakeNodesRepository{revisions: []storage.ConfigRevision{
+		testConfigRevision("revision-2", "node-1", 2),
+		testConfigRevision("revision-1", "node-1", 1),
+	}}
+	handler := NewHandler(nil, repo, testAdminOnly)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/node-1/config-revisions", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.listRevisionsNodeID != "node-1" {
+		t.Fatalf("unexpected list node id: %q", repo.listRevisionsNodeID)
+	}
+	if !strings.Contains(response.Body.String(), `"revision_number":2`) {
+		t.Fatalf("expected revisions response: %s", response.Body.String())
+	}
+}
+
+func TestGetConfigRevisionSuccess(t *testing.T) {
+	repo := &fakeNodesRepository{revision: testConfigRevision("revision-1", "node-1", 1)}
+	handler := NewHandler(nil, repo, testAdminOnly)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/node-1/config-revisions/revision-1", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.findRevisionNodeID != "node-1" || repo.findRevisionID != "revision-1" {
+		t.Fatalf("unexpected find revision call: node=%q revision=%q", repo.findRevisionNodeID, repo.findRevisionID)
+	}
+	if !strings.Contains(response.Body.String(), `"id":"revision-1"`) {
+		t.Fatalf("expected revision response: %s", response.Body.String())
+	}
+}
+
 func TestRegisterSuccess(t *testing.T) {
 	repo := &fakeNodesRepository{}
 	handler := NewHandler(nil, repo, nil)
@@ -347,20 +456,29 @@ func testRegisterTokenError(t *testing.T, err error, expectedStatus int, expecte
 }
 
 type fakeNodesRepository struct {
-	bootstrap       storage.CreateBootstrapTokenInput
-	bootstrapCalled bool
-	nodes           []storage.Node
-	node            storage.Node
-	listCalled      bool
-	foundID         string
-	findErr         error
-	lifecycleAction string
-	lifecycleID     string
-	lifecycleErr    error
-	registered      storage.RegisterNodeInput
-	registerErr     error
-	heartbeat       storage.HeartbeatInput
-	heartbeatErr    error
+	bootstrap           storage.CreateBootstrapTokenInput
+	bootstrapCalled     bool
+	nodes               []storage.Node
+	node                storage.Node
+	listCalled          bool
+	foundID             string
+	findErr             error
+	lifecycleAction     string
+	lifecycleID         string
+	lifecycleErr        error
+	registered          storage.RegisterNodeInput
+	registerErr         error
+	heartbeat           storage.HeartbeatInput
+	heartbeatErr        error
+	createdRevision     storage.CreateDummyConfigRevisionInput
+	revision            storage.ConfigRevision
+	revisions           []storage.ConfigRevision
+	createRevisionErr   error
+	listRevisionsNodeID string
+	listRevisionsErr    error
+	findRevisionNodeID  string
+	findRevisionID      string
+	findRevisionErr     error
 }
 
 func (r *fakeNodesRepository) List(ctx context.Context) ([]storage.Node, error) {
@@ -443,6 +561,34 @@ func (r *fakeNodesRepository) Enable(ctx context.Context, id string) (storage.No
 	})
 }
 
+func (r *fakeNodesRepository) CreateDummyConfigRevision(ctx context.Context, input storage.CreateDummyConfigRevisionInput) (storage.ConfigRevision, error) {
+	r.createdRevision = input
+	if r.createRevisionErr != nil {
+		return storage.ConfigRevision{}, r.createRevisionErr
+	}
+	if r.revision.ID != "" {
+		return r.revision, nil
+	}
+	return testConfigRevision("revision-1", input.NodeID, 1), nil
+}
+
+func (r *fakeNodesRepository) ListConfigRevisions(ctx context.Context, nodeID string) ([]storage.ConfigRevision, error) {
+	r.listRevisionsNodeID = nodeID
+	if r.listRevisionsErr != nil {
+		return nil, r.listRevisionsErr
+	}
+	return r.revisions, nil
+}
+
+func (r *fakeNodesRepository) FindConfigRevision(ctx context.Context, nodeID string, revisionID string) (storage.ConfigRevision, error) {
+	r.findRevisionNodeID = nodeID
+	r.findRevisionID = revisionID
+	if r.findRevisionErr != nil {
+		return storage.ConfigRevision{}, r.findRevisionErr
+	}
+	return r.revision, nil
+}
+
 func (r *fakeNodesRepository) lifecycle(action string, id string, update func(storage.Node) storage.Node) (storage.Node, error) {
 	r.lifecycleAction = action
 	r.lifecycleID = id
@@ -454,6 +600,22 @@ func (r *fakeNodesRepository) lifecycle(action string, id string, update func(st
 		node = testNode(id)
 	}
 	return update(node), nil
+}
+
+func testConfigRevision(id string, nodeID string, revisionNumber int) storage.ConfigRevision {
+	now := time.Date(2026, 5, 15, 1, 2, 3, 0, time.UTC)
+	return storage.ConfigRevision{
+		ID:                     id,
+		NodeID:                 nodeID,
+		RevisionNumber:         revisionNumber,
+		Status:                 "pending",
+		BundleHash:             "bundle-hash",
+		Signature:              "signature",
+		Signer:                 "lenker-dev-hmac-sha256",
+		RollbackTargetRevision: revisionNumber - 1,
+		Bundle:                 map[string]any{"schema_version": "config-bundle.v1alpha1"},
+		CreatedAt:              now,
+	}
 }
 
 func testNode(id string) storage.Node {

@@ -461,6 +461,70 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/config-revisions:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Nodes]
+      summary: List node config revisions
+      description: Returns signed config bundle metadata only. Stage C does not generate or apply real Xray config.
+      responses:
+        "200":
+          description: Config revisions list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRevisionListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Nodes]
+      summary: Create dummy signed config revision metadata
+      description: Creates metadata for a signed dummy bundle. It does not generate Xray config, apply config, restart processes, or execute rollback.
+      responses:
+        "201":
+          description: Config revision metadata created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRevisionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/config-revisions/{revisionId}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+      - name: revisionId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Config revision identifier.
+    get:
+      tags: [Nodes]
+      summary: Get node config revision metadata
+      responses:
+        "200":
+          description: Config revision metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRevisionEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/nodes/{id}/drain:
     parameters:
       - $ref: "#/components/parameters/ID"
@@ -1056,6 +1120,77 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/NodeSummary"
+    ConfigRevision:
+      type: object
+      required:
+        - id
+        - node_id
+        - revision_number
+        - status
+        - bundle_hash
+        - signature
+        - signer
+        - rollback_target_revision
+        - created_at
+      properties:
+        id:
+          type: string
+        node_id:
+          type: string
+        revision_number:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [pending, applied, failed, rolled_back]
+        bundle_hash:
+          type: string
+          description: Stable hash of the dummy bundle metadata payload.
+        signature:
+          type: string
+          description: Deterministic development signature for the Stage C foundation.
+        signer:
+          type: string
+        rollback_target_revision:
+          type: integer
+          minimum: 0
+        bundle:
+          type: object
+          description: Dummy signed bundle metadata. It is not a real Xray config blob.
+        created_at:
+          type: string
+          format: date-time
+        applied_at:
+          type: string
+          format: date-time
+          nullable: true
+        failed_at:
+          type: string
+          format: date-time
+          nullable: true
+        rolled_back_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+    ConfigRevisionEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/ConfigRevision"
+    ConfigRevisionListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/ConfigRevision"
     RegisterNodeRequest:
       type: object
       required: [bootstrap_token, agent_version]

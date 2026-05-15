@@ -52,10 +52,17 @@ type HeartbeatPayload struct {
 }
 
 type ConfigRevision struct {
-	RevisionNumber int       `json:"revision_number"`
-	BundleHash     string    `json:"bundle_hash,omitempty"`
-	Status         string    `json:"status"`
-	AppliedAt      time.Time `json:"applied_at,omitempty"`
+	ID                     string         `json:"id,omitempty"`
+	NodeID                 string         `json:"node_id,omitempty"`
+	RevisionNumber         int            `json:"revision_number"`
+	Status                 string         `json:"status"`
+	BundleHash             string         `json:"bundle_hash,omitempty"`
+	Signature              string         `json:"signature,omitempty"`
+	Signer                 string         `json:"signer,omitempty"`
+	RollbackTargetRevision int            `json:"rollback_target_revision"`
+	Bundle                 map[string]any `json:"bundle,omitempty"`
+	CreatedAt              time.Time      `json:"created_at,omitempty"`
+	AppliedAt              time.Time      `json:"applied_at,omitempty"`
 }
 
 type RollbackPlan struct {

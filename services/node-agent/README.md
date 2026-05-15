@@ -23,6 +23,7 @@ Current foundation:
 - local `GET /status`
 - agent identity, registration payload, heartbeat payload, status, config revision, and rollback placeholder models
 - registration and heartbeat request builders
+- signed config revision metadata validation with in-memory storage
 - config revision tracking and rollback planning skeleton
 
 Configuration:
@@ -94,6 +95,13 @@ panel until an admin enables them again.
 Conservative note:
 
 `LENKER_AGENT_TLS_ENABLED` is a foundation flag only. Full mTLS bootstrap, certificate rotation, network retry policy, and signed config transport are intentionally not implemented in this step.
+
+Stage C note:
+
+The agent validates and stores signed config bundle metadata only. It verifies
+the dummy bundle hash and deterministic development signature, keeps metadata in
+memory, and tracks active/rollback revision numbers. It does not write Xray
+config files, apply configs, restart processes, or execute rollback.
 
 Not included here yet:
 

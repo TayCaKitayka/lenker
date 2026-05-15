@@ -30,6 +30,7 @@ Current foundation:
 - admin-created one-time node bootstrap tokens
 - node registration with token expiry and one-time token consumption
 - node heartbeat status and `last_seen_at` updates
+- config revision metadata storage with deterministic signed dummy bundle metadata
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -75,6 +76,9 @@ Implemented foundation routes:
 - `POST /api/v1/nodes/{id}/undrain`
 - `POST /api/v1/nodes/{id}/disable`
 - `POST /api/v1/nodes/{id}/enable`
+- `POST /api/v1/nodes/{id}/config-revisions`
+- `GET /api/v1/nodes/{id}/config-revisions`
+- `GET /api/v1/nodes/{id}/config-revisions/{revisionId}`
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
 
@@ -90,6 +94,9 @@ Admin-only routes:
 - `POST /api/v1/nodes/{id}/undrain`
 - `POST /api/v1/nodes/{id}/disable`
 - `POST /api/v1/nodes/{id}/enable`
+- `POST /api/v1/nodes/{id}/config-revisions`
+- `GET /api/v1/nodes/{id}/config-revisions`
+- `GET /api/v1/nodes/{id}/config-revisions/{revisionId}`
 
 Node-agent contract routes:
 
@@ -119,7 +126,8 @@ Not included here yet:
 - devices, key rotation, and export flows
 - full node orchestration engine
 - full mTLS or certificate rotation
-- config delivery or rollback executor
+- real Xray config generation
+- config delivery, Xray apply, process restart, or rollback executor
 - billing
 - marketplace
 - VPN or Xray logic
@@ -321,6 +329,34 @@ Conservative lifecycle behavior:
 - `undrain` sets `drain_state` to `active`; disabled nodes stay disabled.
 - `disable` sets `status` to `disabled`; disabled nodes do not accept heartbeat updates.
 - `enable` returns the node to `unhealthy` until the next successful heartbeat.
+
+## Config Revision Metadata
+
+Stage C stores signed bundle metadata only. It creates deterministic dummy
+bundle metadata for the single MVP protocol path and records revision number,
+status, bundle hash, signature, signer, rollback target metadata, and
+timestamps. It does not generate real Xray config, apply config, restart Xray,
+or execute rollback.
+
+Create a config revision metadata record:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+List and inspect revisions:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/<node_id>/config-revisions \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+
+curl -s http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<revision_id> \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Revision creation is rejected for disabled nodes and for nodes in `draining` or
+`drained` drain state.
 
 Manual smoke checklist:
 

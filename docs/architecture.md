@@ -153,8 +153,10 @@ The current contract slice provides admin-created one-time bootstrap tokens,
 node registration, heartbeat endpoints, and node-agent local health/status
 endpoints. The panel stores only bootstrap token hashes, expires tokens, and
 marks tokens used after successful registration. Full mTLS establishment,
-certificate rotation, signed config delivery, Xray process control, and
-rollback execution are still skeleton work.
+certificate rotation, Xray process control, and rollback execution are still
+skeleton work. Stage C stores signed config bundle metadata and revision
+history only; it does not generate real Xray config, apply config, restart
+processes, or execute rollback.
 
 ### Boundary 3: User App to Panel
 
