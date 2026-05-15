@@ -53,46 +53,48 @@ export function UsersPage({ session, onUnauthorized }: UsersPageProps) {
   }, [session, onUnauthorized]);
 
   return (
-    <section className="hero-card" id="users">
-      <div className="section-heading">
+    <div className="page-stack" id="users">
+      <section className="page-header">
         <div>
           <p className="eyebrow">Users</p>
           <h2>Users</h2>
           <p>Read-only user list loaded from panel-api.</p>
         </div>
         <span className="pill">{users.length} total</span>
-      </div>
+      </section>
 
-      {loadState === "loading" ? <p className="state-text">Loading users...</p> : null}
-      {loadState === "failed" ? <p className="error-text">{errorMessage}</p> : null}
-      {loadState === "loaded" && users.length === 0 ? <p className="state-text">No users yet.</p> : null}
+      <section className="surface-card">
+        {loadState === "loading" ? <p className="state-text">Loading users...</p> : null}
+        {loadState === "failed" ? <p className="error-text">{errorMessage}</p> : null}
+        {loadState === "loaded" && users.length === 0 ? <p className="state-text">No users yet.</p> : null}
 
-      {users.length > 0 ? (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Display name</th>
-                <th>Status</th>
-                <th>ID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td>{user.email}</td>
-                  <td>{user.display_name || "-"}</td>
-                  <td>
-                    <span className={`status-badge status-${user.status}`}>{user.status}</span>
-                  </td>
-                  <td className="mono-cell">{user.id}</td>
+        {users.length > 0 ? (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Display name</th>
+                  <th>Status</th>
+                  <th>ID</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </section>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id}>
+                    <td>{user.email}</td>
+                    <td>{user.display_name || "-"}</td>
+                    <td>
+                      <span className={`status-badge status-${user.status}`}>{user.status}</span>
+                    </td>
+                    <td className="mono-cell">{user.id}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
