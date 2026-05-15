@@ -1,20 +1,22 @@
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
+import { getApiBaseUrl, loginAdmin, PanelApiError } from "../lib/api";
 import { clearStoredSession, loadStoredSession, saveStoredSession, type StoredSession } from "../lib/session";
 
 interface LoginFormState {
   email: string;
-  secret: string;
+  password: string;
 }
 
 const initialLoginFormState: LoginFormState = {
   email: "owner@example.com",
-  secret: "",
+  password: "",
 };
 
 export function App() {
   const [storedSession, setStoredSession] = useState<StoredSession | null>(() => loadStoredSession());
   const [formState, setFormState] = useState<LoginFormState>(initialLoginFormState);
-  const [message, setMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const expiresAtLabel = useMemo(() => {
     if (!storedSession?.session.expires_at) {
@@ -31,37 +33,34 @@ export function App() {
     setFormState((currentValue) => ({ ...currentValue, [fieldName]: value }));
   }
 
-  function storeManualSession() {
-    const trimmedEmail = formState.email.trim();
-    const trimmedToken = formState.secret.trim();
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-    if (!trimmedEmail || !trimmedToken) {
-      setMessage("Email and session token are required for the temporary local shell.");
+    const email = formState.email.trim();
+    const password = formState.password;
+
+    if (!email || !password) {
+      setErrorMessage("Email and password are required.");
       return;
     }
 
-    const session: StoredSession = {
-      admin: {
-        id: "local-admin",
-        email: trimmedEmail,
-        status: "active",
-        two_factor_enabled: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        last_login_at: new Date().toISOString(),
-      },
-      session: {
-        id: "local-session",
-        admin_id: "local-admin",
-        token: trimmedToken,
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        created_at: new Date().toISOString(),
-      },
-    };
+    setIsSubmitting(true);
+    setErrorMessage(null);
 
-    saveStoredSession(session);
-    setStoredSession(session);
-    setMessage(null);
+    try {
+      const session = await loginAdmin(email, password);
+      saveStoredSession(session);
+      setStoredSession(session);
+      setFormState(initialLoginFormState);
+    } catch (error) {
+      if (error instanceof PanelApiError) {
+        setErrorMessage(`${error.message} (${error.code})`);
+      } else {
+        setErrorMessage("Unable to connect to panel-api.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function logout() {
@@ -73,11 +72,11 @@ export function App() {
   if (!storedSession) {
     return (
       <main className="auth-layout">
-        <section className="auth-card">
+        <form className="auth-card" onSubmit={submitLogin}>
           <p className="eyebrow">Lenker Provider Panel</p>
           <h1>Admin access</h1>
           <p className="muted-text">
-            First UI foundation for the provider panel. Network login will be wired to panel-api in the next slice.
+            Sign in with the local admin created by <code>make docker-bootstrap-admin</code>.
           </p>
 
           <label className="field-label" htmlFor="email">
@@ -87,27 +86,31 @@ export function App() {
             id="email"
             className="text-field"
             type="email"
+            autoComplete="username"
             value={formState.email}
             onChange={(event) => updateFormField("email", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="session-token">
-            Temporary session token
+          <label className="field-label" htmlFor="password">
+            Password
           </label>
           <input
-            id="session-token"
+            id="password"
             className="text-field"
             type="password"
-            value={formState.secret}
-            onChange={(event) => updateFormField("secret", event.target.value)}
+            autoComplete="current-password"
+            value={formState.password}
+            onChange={(event) => updateFormField("password", event.target.value)}
           />
 
-          {message ? <p className="error-text">{message}</p> : null}
+          {errorMessage ? <p className="error-text">{errorMessage}</p> : null}
 
-          <button className="primary-button" type="button" onClick={storeManualSession}>
-            Enter dashboard shell
+          <button className="primary-button" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
-        </section>
+
+          <p className="helper-text">API target: {getApiBaseUrl()}</p>
+        </form>
       </main>
     );
   }
@@ -143,7 +146,8 @@ export function App() {
           <p className="eyebrow">MVP v0.1</p>
           <h2>Dashboard shell is ready</h2>
           <p>
-            The React app now has a Vite entrypoint, session persistence, panel layout, and navigation placeholders.
+            The React app now authenticates against panel-api, stores the admin session locally,
+            and renders the first provider dashboard shell.
           </p>
           <dl className="details-grid">
             <div>
@@ -152,7 +156,7 @@ export function App() {
             </div>
             <div>
               <dt>Backend target</dt>
-              <dd>http://localhost:8080</dd>
+              <dd>{getApiBaseUrl()}</dd>
             </div>
           </dl>
         </section>

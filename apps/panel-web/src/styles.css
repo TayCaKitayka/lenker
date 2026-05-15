@@ -258,3 +258,9 @@ input {
     grid-template-columns: 1fr;
   }
 }
+
+.helper-text {
+  margin: 14px 0 0;
+  color: #65758f;
+  font-size: 13px;
+}
