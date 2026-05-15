@@ -46,7 +46,8 @@ input {
 
 .auth-card h1,
 .sidebar h1,
-.hero-card h2 {
+.hero-card h2,
+.page-header h2 {
   margin: 0;
   letter-spacing: -0.04em;
 }
@@ -129,6 +130,7 @@ input {
   display: grid;
   min-height: 100vh;
   grid-template-columns: 280px 1fr;
+  background: #f5f7fb;
 }
 
 .sidebar {
@@ -170,6 +172,7 @@ input {
 
 .content-shell {
   padding: 28px;
+  background: #f5f7fb;
 }
 
 .topbar {
@@ -184,23 +187,41 @@ input {
 }
 
 .hero-card,
-.status-card {
+.status-card,
+.surface-card,
+.page-header {
   border: 1px solid #dbe3ef;
   background: #ffffff;
   box-shadow: 0 16px 40px rgb(34 48 73 / 8%);
 }
 
-.hero-card {
+.hero-card,
+.surface-card,
+.page-header {
   padding: 28px;
   border-radius: 24px;
 }
 
-.hero-card h2 {
+.page-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.hero-card h2,
+.page-header h2 {
   margin-top: 10px;
   font-size: 34px;
 }
 
-.hero-card p:not(.eyebrow) {
+.hero-card p:not(.eyebrow),
+.page-header p:not(.eyebrow) {
   max-width: 720px;
   color: #53637c;
   line-height: 1.6;
@@ -225,7 +246,7 @@ input {
 }
 
 .state-text {
-  margin: 18px 0 0;
+  margin: 0;
   color: #65758f;
   font-weight: 700;
 }
@@ -279,7 +300,6 @@ input {
 
 .table-wrap {
   overflow-x: auto;
-  margin-top: 18px;
   border: 1px solid #dbe3ef;
   border-radius: 18px;
 }
@@ -355,7 +375,8 @@ input {
     grid-template-columns: 1fr;
   }
 
-  .section-heading {
+  .section-heading,
+  .page-header {
     display: grid;
   }
 }
