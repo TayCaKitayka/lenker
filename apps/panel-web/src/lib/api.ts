@@ -10,6 +10,10 @@ interface UserListResponse {
   data: User[];
 }
 
+interface UserResponse {
+  data: User;
+}
+
 interface ApiErrorResponse {
   error?: {
     code?: string;
@@ -22,6 +26,16 @@ export interface User {
   email: string;
   status: "active" | "suspended" | "expired";
   display_name: string;
+}
+
+export interface CreateUserInput {
+  email: string;
+  display_name?: string;
+}
+
+export interface UpdateUserInput {
+  email?: string;
+  display_name?: string;
 }
 
 export class PanelApiError extends Error {
@@ -69,11 +83,53 @@ export async function listUsers(session: StoredSession): Promise<User[]> {
   return payload.data;
 }
 
-async function authorizedRequest<TPayload>(session: StoredSession, path: string): Promise<TPayload> {
+export async function createUser(session: StoredSession, input: CreateUserInput): Promise<User> {
+  const payload = await authorizedRequest<UserResponse>(session, "/api/v1/users", {
+    method: "POST",
+    body: input,
+  });
+  return payload.data;
+}
+
+export async function updateUser(session: StoredSession, userID: string, input: UpdateUserInput): Promise<User> {
+  const payload = await authorizedRequest<UserResponse>(session, `/api/v1/users/${encodeURIComponent(userID)}`, {
+    method: "PATCH",
+    body: input,
+  });
+  return payload.data;
+}
+
+export async function suspendUser(session: StoredSession, userID: string): Promise<User> {
+  const payload = await authorizedRequest<UserResponse>(session, `/api/v1/users/${encodeURIComponent(userID)}/suspend`, {
+    method: "POST",
+  });
+  return payload.data;
+}
+
+export async function activateUser(session: StoredSession, userID: string): Promise<User> {
+  const payload = await authorizedRequest<UserResponse>(session, `/api/v1/users/${encodeURIComponent(userID)}/activate`, {
+    method: "POST",
+  });
+  return payload.data;
+}
+
+interface AuthorizedRequestOptions {
+  method?: "GET" | "POST" | "PATCH";
+  body?: unknown;
+}
+
+async function authorizedRequest<TPayload>(
+  session: StoredSession,
+  path: string,
+  options: AuthorizedRequestOptions = {},
+): Promise<TPayload> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: options.method ?? "GET",
     headers: {
       Authorization: `Bearer ${session.session.token}`,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
     },
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
   const payload = (await response.json().catch(() => null)) as TPayload | ApiErrorResponse | null;

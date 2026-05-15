@@ -12,7 +12,8 @@ Current implemented foundation:
 - expired or malformed admin sessions are cleared on load;
 - unauthorized API responses clear the session and return the admin to login;
 - dashboard shell;
-- navigation placeholders for users, plans, subscriptions, and nodes.
+- users management page with list, create, update, suspend, and activate flows;
+- navigation placeholders for plans, subscriptions, and nodes.
 
 Run from the repository root:
 
@@ -37,6 +38,12 @@ Focused session utility tests:
 
 ```sh
 npm --workspace @lenker/panel-web run test:session
+```
+
+Focused users form tests:
+
+```sh
+npm --workspace @lenker/panel-web run test:users
 ```
 
 Planned `MVP v0.1` provider UI scope:
