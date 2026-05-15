@@ -108,6 +108,11 @@ input {
   color: #ffffff;
 }
 
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .secondary-button {
   padding: 10px 14px;
   background: #eef2f8;
@@ -146,10 +151,15 @@ input {
 }
 
 .nav-link {
+  width: 100%;
   padding: 12px 14px;
+  border: 0;
   border-radius: 14px;
+  background: transparent;
   color: #53637c;
+  cursor: pointer;
   font-weight: 700;
+  text-align: left;
 }
 
 .nav-link.active,
@@ -194,6 +204,30 @@ input {
   max-width: 720px;
   color: #53637c;
   line-height: 1.6;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.pill {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #eef2f8;
+  color: #263650;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.state-text {
+  margin: 18px 0 0;
+  color: #65758f;
+  font-weight: 700;
 }
 
 .details-grid {
@@ -243,6 +277,69 @@ input {
   line-height: 1.5;
 }
 
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 18px;
+  border: 1px solid #dbe3ef;
+  border-radius: 18px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5ebf4;
+  text-align: left;
+}
+
+.data-table th {
+  background: #f8fafc;
+  color: #53637c;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.data-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.mono-cell {
+  color: #53637c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-suspended {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-expired {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 @media (max-width: 920px) {
   .panel-layout {
     grid-template-columns: 1fr;
@@ -256,6 +353,10 @@ input {
   .cards-grid,
   .details-grid {
     grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    display: grid;
   }
 }
 
