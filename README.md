@@ -32,6 +32,7 @@ Current repository state:
 - GitHub Actions runs backend and OpenAPI checks.
 - `node-agent` foundation exists.
 - `panel-api` and `node-agent` have a bootstrap token, registration, and heartbeat contract.
+- Docker local dev profile exists for PostgreSQL, migrations, `panel-api`, and `node-agent` smoke checks.
 
 Not ready yet:
 
@@ -96,6 +97,7 @@ Local tooling:
 
 - PostgreSQL migrations through `golang-migrate/migrate`
 - first-admin bootstrap CLI
+- Docker Compose local dev profile
 - OpenAPI validation
 - unit and contract tests
 - GitHub Actions CI
@@ -107,6 +109,8 @@ Local tooling:
 ├── apps/
 │   ├── client-app/
 │   └── panel-web/
+├── deploy/
+│   └── docker/
 ├── docs/
 │   ├── adr/
 │   ├── openapi/
@@ -130,7 +134,35 @@ Local tooling:
 
 ## Quick Start
 
-Prerequisites for current backend work:
+The fastest local smoke path is Docker Compose:
+
+```sh
+make docker-build
+make docker-up
+make docker-bootstrap-admin
+make docker-smoke
+```
+
+This starts PostgreSQL, applies migrations, starts `panel-api`, starts `node-agent`, creates a local admin, and checks both health endpoints.
+
+Default local admin created by `make docker-bootstrap-admin`:
+
+```text
+email: owner@example.com
+password: change-me-now
+```
+
+Stop the local Docker stack:
+
+```sh
+make docker-down
+```
+
+See [deploy/docker/README.md](deploy/docker/README.md) for Docker-specific notes.
+
+## Manual Local Development
+
+Prerequisites for manual backend work:
 
 - Go 1.22+
 - Ruby, for the lightweight OpenAPI validator
@@ -190,6 +222,7 @@ Focused commands:
 make test-panel-api
 make test-node-agent
 make openapi-lint
+make docker-smoke
 ```
 
 GitHub Actions runs `make test` on push and pull requests.
@@ -205,6 +238,7 @@ GitHub Actions runs `make test` on push and pull requests.
 - [Roadmap](docs/roadmap.md)
 - [Business model boundary](docs/business-model.md)
 - [Node bootstrap smoke checklist](docs/smoke/node-bootstrap.md)
+- [Docker local dev](deploy/docker/README.md)
 - [Licensing notes](docs/licensing.md)
 - [Architecture decision records](docs/adr/README.md)
 - [panel-api README](services/panel-api/README.md)
