@@ -189,7 +189,8 @@ input {
 .hero-card,
 .status-card,
 .surface-card,
-.page-header {
+.page-header,
+.state-card {
   border: 1px solid #dbe3ef;
   background: #ffffff;
   box-shadow: 0 16px 40px rgb(34 48 73 / 8%);
@@ -197,7 +198,8 @@ input {
 
 .hero-card,
 .surface-card,
-.page-header {
+.page-header,
+.state-card {
   padding: 28px;
   border-radius: 24px;
 }
@@ -302,6 +304,8 @@ input {
   overflow-x: auto;
   border: 1px solid #dbe3ef;
   border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgb(34 48 73 / 8%);
 }
 
 .data-table {
