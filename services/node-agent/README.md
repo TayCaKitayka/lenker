@@ -87,6 +87,10 @@ Current node lifecycle statuses are `pending`, `active`, `unhealthy`,
 `drained`, and `disabled`. The node-agent foundation builds payloads only; it
 does not implement a retrying network client or mTLS certificate lifecycle yet.
 
+Drain and disable operations are controlled by `panel-api` admin endpoints. The
+agent continues to build heartbeat payloads; disabled nodes are rejected by the
+panel until an admin enables them again.
+
 Conservative note:
 
 `LENKER_AGENT_TLS_ENABLED` is a foundation flag only. Full mTLS bootstrap, certificate rotation, network retry policy, and signed config transport are intentionally not implemented in this step.

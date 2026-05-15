@@ -380,6 +380,21 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/nodes:
+    get:
+      tags: [Nodes]
+      summary: List managed nodes
+      responses:
+        "200":
+          description: Nodes list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/nodes/register:
     post:
       tags: [Nodes]
@@ -425,6 +440,109 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Nodes]
+      summary: Get a managed node
+      responses:
+        "200":
+          description: Node details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/drain:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Nodes]
+      summary: Mark a node as draining
+      responses:
+        "200":
+          description: Node marked as draining.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/undrain:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Nodes]
+      summary: Return a node to active drain state
+      responses:
+        "200":
+          description: Node undrained.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/disable:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Nodes]
+      summary: Disable a node
+      responses:
+        "200":
+          description: Node disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/enable:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Nodes]
+      summary: Enable a disabled node
+      responses:
+        "200":
+          description: Node enabled as unhealthy until the next heartbeat.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/v1/nodes/{id}/heartbeat:
@@ -875,6 +993,69 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/NodeBootstrapToken"
+    NodeSummary:
+      type: object
+      required: [id, name, region, status, drain_state, active_revision_id]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        region:
+          type: string
+        status:
+          type: string
+          enum: [pending, active, unhealthy, drained, disabled]
+        drain_state:
+          type: string
+          enum: [active, draining, drained]
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        registered_at:
+          type: string
+          format: date-time
+          nullable: true
+        agent_version:
+          type: string
+        active_revision_id:
+          type: integer
+          minimum: 0
+    Node:
+      allOf:
+        - $ref: "#/components/schemas/NodeSummary"
+        - type: object
+          properties:
+            country_code:
+              type: string
+            hostname:
+              type: string
+            xray_version:
+              type: string
+            last_health_at:
+              type: string
+              format: date-time
+              nullable: true
+            updated_at:
+              type: string
+              format: date-time
+    NodeEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Node"
+    NodeListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/NodeSummary"
     RegisterNodeRequest:
       type: object
       required: [bootstrap_token, agent_version]

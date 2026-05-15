@@ -39,6 +39,10 @@ const (
 	ActionNodeBootstrapToken     = "node.bootstrap_token.create"
 	ActionNodeRegister           = "node.register"
 	ActionNodeHeartbeat          = "node.heartbeat"
+	ActionNodeDrain              = "node.drain"
+	ActionNodeUndrain            = "node.undrain"
+	ActionNodeDisable            = "node.disable"
+	ActionNodeEnable             = "node.enable"
 
 	OutcomeSuccess = "success"
 	OutcomeFailure = "failure"

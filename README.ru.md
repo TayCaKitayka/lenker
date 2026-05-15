@@ -80,6 +80,7 @@ Backend foundation:
 - admin-protected subscriptions API;
 - `POST /api/v1/nodes/register`;
 - `POST /api/v1/nodes/bootstrap-token`;
+- admin-protected node list/detail и lifecycle actions;
 - `POST /api/v1/nodes/{id}/heartbeat`.
 
 Node-agent foundation:
@@ -203,6 +204,7 @@ GitHub Actions запускает `make test` на push и pull requests.
 - [OpenAPI notes](docs/openapi/README.md)
 - [Roadmap](docs/roadmap.md)
 - [Business model boundary](docs/business-model.md)
+- [Node bootstrap smoke checklist](docs/smoke/node-bootstrap.md)
 - [Licensing notes](docs/licensing.md)
 - [Architecture decision records](docs/adr/README.md)
 - [panel-api README](services/panel-api/README.md)

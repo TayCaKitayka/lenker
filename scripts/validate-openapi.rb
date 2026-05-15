@@ -16,9 +16,15 @@ EXPECTED_OPERATIONS = {
   "/api/v1/subscriptions" => %w[get post],
   "/api/v1/subscriptions/{id}" => %w[get patch],
   "/api/v1/subscriptions/{id}/renew" => %w[post],
+  "/api/v1/nodes" => %w[get],
   "/api/v1/nodes/bootstrap-token" => %w[post],
   "/api/v1/nodes/register" => %w[post],
-  "/api/v1/nodes/{id}/heartbeat" => %w[post]
+  "/api/v1/nodes/{id}" => %w[get],
+  "/api/v1/nodes/{id}/disable" => %w[post],
+  "/api/v1/nodes/{id}/drain" => %w[post],
+  "/api/v1/nodes/{id}/enable" => %w[post],
+  "/api/v1/nodes/{id}/heartbeat" => %w[post],
+  "/api/v1/nodes/{id}/undrain" => %w[post]
 }.freeze
 
 HTTP_METHODS = %w[get put post delete options head patch trace].freeze

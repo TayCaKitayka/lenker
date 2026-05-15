@@ -16,6 +16,7 @@ var (
 	ErrExpiredBootstrapToken = errors.New("expired bootstrap token")
 	ErrBootstrapTokenUsed    = errors.New("bootstrap token already used")
 	ErrInvalidNodeStatus     = errors.New("invalid node status")
+	ErrInvalidNodeTransition = errors.New("invalid node transition")
 )
 
 type Node struct {
@@ -74,9 +75,15 @@ type HeartbeatInput struct {
 }
 
 type NodesRepository interface {
+	List(ctx context.Context) ([]Node, error)
+	FindByID(ctx context.Context, id string) (Node, error)
 	CreateBootstrapToken(ctx context.Context, input CreateBootstrapTokenInput) (BootstrapToken, error)
 	Register(ctx context.Context, input RegisterNodeInput) (RegisterNodeResult, error)
 	RecordHeartbeat(ctx context.Context, input HeartbeatInput) (Node, error)
+	Drain(ctx context.Context, id string) (Node, error)
+	Undrain(ctx context.Context, id string) (Node, error)
+	Disable(ctx context.Context, id string) (Node, error)
+	Enable(ctx context.Context, id string) (Node, error)
 }
 
 type nodesRepository struct {
@@ -85,6 +92,46 @@ type nodesRepository struct {
 
 func NewNodesRepository(db *sql.DB) NodesRepository {
 	return &nodesRepository{db: db}
+}
+
+func (r *nodesRepository) List(ctx context.Context) ([]Node, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+		FROM nodes
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	nodes := []Node{}
+	for rows.Next() {
+		node, err := scanNode(rows)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return nodes, nil
+}
+
+func (r *nodesRepository) FindByID(ctx context.Context, id string) (Node, error) {
+	node, err := scanNode(r.db.QueryRowContext(ctx, `
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+		FROM nodes
+		WHERE id = $1
+	`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Node{}, ErrNotFound
+		}
+		return Node{}, err
+	}
+	return node, nil
 }
 
 func (r *nodesRepository) CreateBootstrapToken(ctx context.Context, input CreateBootstrapTokenInput) (BootstrapToken, error) {
@@ -315,6 +362,48 @@ func (r *nodesRepository) RecordHeartbeat(ctx context.Context, input HeartbeatIn
 	return node, nil
 }
 
+func (r *nodesRepository) Drain(ctx context.Context, id string) (Node, error) {
+	return r.transition(ctx, id, func(node Node) (nodeTransition, error) {
+		if node.Status == "disabled" {
+			return nodeTransition{}, ErrInvalidNodeTransition
+		}
+		if node.DrainState == "draining" {
+			return nodeTransition{}, ErrInvalidNodeTransition
+		}
+		return nodeTransition{DrainState: "draining"}, nil
+	})
+}
+
+func (r *nodesRepository) Undrain(ctx context.Context, id string) (Node, error) {
+	return r.transition(ctx, id, func(node Node) (nodeTransition, error) {
+		if node.Status == "disabled" {
+			return nodeTransition{}, ErrInvalidNodeTransition
+		}
+		if node.DrainState == "active" {
+			return nodeTransition{}, ErrInvalidNodeTransition
+		}
+		return nodeTransition{DrainState: "active"}, nil
+	})
+}
+
+func (r *nodesRepository) Disable(ctx context.Context, id string) (Node, error) {
+	return r.transition(ctx, id, func(node Node) (nodeTransition, error) {
+		if node.Status == "disabled" {
+			return nodeTransition{}, ErrInvalidNodeTransition
+		}
+		return nodeTransition{Status: "disabled"}, nil
+	})
+}
+
+func (r *nodesRepository) Enable(ctx context.Context, id string) (Node, error) {
+	return r.transition(ctx, id, func(node Node) (nodeTransition, error) {
+		if node.Status != "disabled" {
+			return nodeTransition{}, ErrInvalidNodeTransition
+		}
+		return nodeTransition{Status: "unhealthy"}, nil
+	})
+}
+
 func newBootstrapToken() (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -351,4 +440,97 @@ func isValidNodeStatus(status string) bool {
 func hashString(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanNode(row rowScanner) (Node, error) {
+	var node Node
+	var lastHealthAt sql.NullTime
+	var lastSeenAt sql.NullTime
+	var registeredAt sql.NullTime
+	err := row.Scan(
+		&node.ID,
+		&node.Name,
+		&node.Region,
+		&node.CountryCode,
+		&node.Hostname,
+		&node.Status,
+		&node.DrainState,
+		&node.AgentVersion,
+		&node.XrayVersion,
+		&node.ActiveRevision,
+		&lastHealthAt,
+		&lastSeenAt,
+		&registeredAt,
+		&node.UpdatedAt,
+	)
+	if err != nil {
+		return Node{}, err
+	}
+	if lastHealthAt.Valid {
+		node.LastHealthAt = &lastHealthAt.Time
+	}
+	if lastSeenAt.Valid {
+		node.LastSeenAt = &lastSeenAt.Time
+	}
+	if registeredAt.Valid {
+		node.RegisteredAt = &registeredAt.Time
+	}
+	return node, nil
+}
+
+type nodeTransition struct {
+	Status     string
+	DrainState string
+}
+
+func (r *nodesRepository) transition(ctx context.Context, id string, decide func(Node) (nodeTransition, error)) (Node, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Node{}, err
+	}
+	defer tx.Rollback()
+
+	node, err := scanNode(tx.QueryRowContext(ctx, `
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+		FROM nodes
+		WHERE id = $1
+		FOR UPDATE
+	`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Node{}, ErrNotFound
+		}
+		return Node{}, err
+	}
+
+	next, err := decide(node)
+	if err != nil {
+		return Node{}, err
+	}
+	if next.Status == "" {
+		next.Status = node.Status
+	}
+	if next.DrainState == "" {
+		next.DrainState = node.DrainState
+	}
+
+	updated, err := scanNode(tx.QueryRowContext(ctx, `
+		UPDATE nodes
+		SET status = $2,
+		    drain_state = $3,
+		    updated_at = now()
+		WHERE id = $1
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+	`, id, next.Status, next.DrainState))
+	if err != nil {
+		return Node{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Node{}, err
+	}
+	return updated, nil
 }

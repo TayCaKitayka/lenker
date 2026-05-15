@@ -1,6 +1,7 @@
 package nodes
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -34,10 +35,42 @@ func (h *Handler) WithAudit(recorder audit.Recorder) *Handler {
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	if h.adminOnly != nil {
+		mux.Handle("GET /api/v1/nodes", h.adminOnly(http.HandlerFunc(h.List)))
 		mux.Handle("POST /api/v1/nodes/bootstrap-token", h.adminOnly(http.HandlerFunc(h.CreateBootstrapToken)))
+		mux.Handle("GET /api/v1/nodes/{id}", h.adminOnly(http.HandlerFunc(h.Get)))
+		mux.Handle("POST /api/v1/nodes/{id}/drain", h.adminOnly(http.HandlerFunc(h.Drain)))
+		mux.Handle("POST /api/v1/nodes/{id}/undrain", h.adminOnly(http.HandlerFunc(h.Undrain)))
+		mux.Handle("POST /api/v1/nodes/{id}/disable", h.adminOnly(http.HandlerFunc(h.Disable)))
+		mux.Handle("POST /api/v1/nodes/{id}/enable", h.adminOnly(http.HandlerFunc(h.Enable)))
 	}
 	mux.HandleFunc("POST /api/v1/nodes/register", h.Register)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", h.Heartbeat)
+}
+
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	nodes, err := h.nodes.List(r.Context())
+	if err != nil {
+		if h.logger != nil {
+			h.logger.Error("node list failed", "error", err)
+		}
+		httpapi.WriteStorageError(w)
+		return
+	}
+
+	data := make([]map[string]any, 0, len(nodes))
+	for _, node := range nodes {
+		data = append(data, nodeSummaryResponse(node))
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: data})
+}
+
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	node, err := h.nodes.FindByID(r.Context(), strings.TrimSpace(r.PathValue("id")))
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: nodeDetailResponse(node)})
 }
 
 func (h *Handler) CreateBootstrapToken(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +120,22 @@ func (h *Handler) CreateBootstrapToken(w http.ResponseWriter, r *http.Request) {
 		"bootstrap_token": token.Token,
 		"expires_at":      token.ExpiresAt,
 	}})
+}
+
+func (h *Handler) Drain(w http.ResponseWriter, r *http.Request) {
+	h.transition(w, r, audit.ActionNodeDrain, h.nodes.Drain)
+}
+
+func (h *Handler) Undrain(w http.ResponseWriter, r *http.Request) {
+	h.transition(w, r, audit.ActionNodeUndrain, h.nodes.Undrain)
+}
+
+func (h *Handler) Disable(w http.ResponseWriter, r *http.Request) {
+	h.transition(w, r, audit.ActionNodeDisable, h.nodes.Disable)
+}
+
+func (h *Handler) Enable(w http.ResponseWriter, r *http.Request) {
+	h.transition(w, r, audit.ActionNodeEnable, h.nodes.Enable)
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -244,6 +293,79 @@ func validNodeStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+func (h *Handler) transition(w http.ResponseWriter, r *http.Request, action string, fn func(context.Context, string) (storage.Node, error)) {
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	if nodeID == "" {
+		httpapi.WriteBadRequest(w, "node id is required")
+		return
+	}
+
+	node, err := fn(r.Context(), nodeID)
+	if err != nil {
+		h.recordAdmin(r, action, nodeID, audit.OutcomeFailure, errorReason(err))
+		writeNodeError(w, err)
+		return
+	}
+
+	h.recordAdmin(r, action, node.ID, audit.OutcomeSuccess, "")
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: nodeDetailResponse(node)})
+}
+
+func nodeSummaryResponse(node storage.Node) map[string]any {
+	return map[string]any{
+		"id":                 node.ID,
+		"name":               node.Name,
+		"region":             node.Region,
+		"status":             node.Status,
+		"drain_state":        node.DrainState,
+		"last_seen_at":       node.LastSeenAt,
+		"registered_at":      node.RegisteredAt,
+		"agent_version":      node.AgentVersion,
+		"active_revision_id": node.ActiveRevision,
+	}
+}
+
+func nodeDetailResponse(node storage.Node) map[string]any {
+	return map[string]any{
+		"id":                 node.ID,
+		"name":               node.Name,
+		"region":             node.Region,
+		"country_code":       node.CountryCode,
+		"hostname":           node.Hostname,
+		"status":             node.Status,
+		"drain_state":        node.DrainState,
+		"agent_version":      node.AgentVersion,
+		"xray_version":       node.XrayVersion,
+		"active_revision_id": node.ActiveRevision,
+		"last_health_at":     node.LastHealthAt,
+		"last_seen_at":       node.LastSeenAt,
+		"registered_at":      node.RegisteredAt,
+		"updated_at":         node.UpdatedAt,
+	}
+}
+
+func writeNodeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, storage.ErrNotFound) {
+		httpapi.WriteNotFound(w, "node")
+		return
+	}
+	if errors.Is(err, storage.ErrInvalidNodeTransition) {
+		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "invalid node lifecycle transition")
+		return
+	}
+	httpapi.WriteStorageError(w)
+}
+
+func errorReason(err error) string {
+	if errors.Is(err, storage.ErrNotFound) {
+		return "not_found"
+	}
+	if errors.Is(err, storage.ErrInvalidNodeTransition) {
+		return "validation_error"
+	}
+	return "storage_error"
 }
 
 func (h *Handler) recordAdmin(r *http.Request, action string, resourceID string, outcome string, reason string) {

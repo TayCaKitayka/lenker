@@ -68,7 +68,13 @@ Implemented foundation routes:
 - `GET /api/v1/subscriptions/{id}`
 - `PATCH /api/v1/subscriptions/{id}`
 - `POST /api/v1/subscriptions/{id}/renew`
+- `GET /api/v1/nodes`
 - `POST /api/v1/nodes/bootstrap-token`
+- `GET /api/v1/nodes/{id}`
+- `POST /api/v1/nodes/{id}/drain`
+- `POST /api/v1/nodes/{id}/undrain`
+- `POST /api/v1/nodes/{id}/disable`
+- `POST /api/v1/nodes/{id}/enable`
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
 
@@ -77,7 +83,13 @@ Admin-only routes:
 - all `/api/v1/users*` routes
 - all `/api/v1/plans*` routes
 - all `/api/v1/subscriptions*` routes
+- `GET /api/v1/nodes`
 - `POST /api/v1/nodes/bootstrap-token`
+- `GET /api/v1/nodes/{id}`
+- `POST /api/v1/nodes/{id}/drain`
+- `POST /api/v1/nodes/{id}/undrain`
+- `POST /api/v1/nodes/{id}/disable`
+- `POST /api/v1/nodes/{id}/enable`
 
 Node-agent contract routes:
 
@@ -266,6 +278,53 @@ curl -s http://localhost:8080/api/v1/nodes/<node_id>/heartbeat \
 Registration rejects invalid, expired, and already used bootstrap tokens. A
 heartbeat for an unknown node returns `not_found`; heartbeat does not create
 nodes.
+
+## Node Management
+
+List nodes:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Get node details:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/<node_id> \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Drain and undrain a node:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/drain \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/undrain \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Disable and enable a node:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/disable \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/enable \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Conservative lifecycle behavior:
+
+- `drain` sets `drain_state` to `draining`; it does not stop heartbeat.
+- `undrain` sets `drain_state` to `active`; disabled nodes stay disabled.
+- `disable` sets `status` to `disabled`; disabled nodes do not accept heartbeat updates.
+- `enable` returns the node to `unhealthy` until the next successful heartbeat.
+
+Manual smoke checklist:
+
+- [docs/smoke/node-bootstrap.md](/Users/vaceslavibraev/Desktop/vpn_service/docs/smoke/node-bootstrap.md)
 
 Useful local targets from the repository root:
 

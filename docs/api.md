@@ -238,9 +238,37 @@ Update node metadata.
 
 Put the node into drain mode.
 
+Current implementation note:
+
+The current backend sets `drain_state` to `draining`. This records provider
+intent without pretending that traffic has already moved away from the node.
+Heartbeat continues to work while a node is draining.
+
 #### `POST /nodes/{nodeId}/undrain`
 
 Return the node to active service.
+
+Current implementation note:
+
+The current backend sets `drain_state` back to `active`. Disabled nodes cannot
+be silently activated by undrain.
+
+#### `POST /nodes/{nodeId}/disable`
+
+Disable a node.
+
+Current implementation note:
+
+Disabled nodes do not accept heartbeat updates.
+
+#### `POST /nodes/{nodeId}/enable`
+
+Enable a disabled node.
+
+Current implementation note:
+
+The current backend returns enabled nodes to `unhealthy` until the next
+successful heartbeat proves the node is active.
 
 #### `POST /nodes/{nodeId}/deploy-config`
 
