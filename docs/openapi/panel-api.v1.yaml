@@ -400,6 +400,31 @@ paths:
                 $ref: "#/components/schemas/RegisterNodeEnvelope"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidBootstrapToken"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/bootstrap-token:
+    post:
+      tags: [Nodes]
+      summary: Create a one-time node bootstrap token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNodeBootstrapTokenRequest"
+      responses:
+        "201":
+          description: Bootstrap token created. The plaintext token is returned only once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeBootstrapTokenEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/v1/nodes/{id}/heartbeat:
@@ -480,6 +505,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidBootstrapToken:
+      description: Node bootstrap token is invalid, expired, or already used.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
     SuccessEnvelope:
       type: object
@@ -512,6 +543,9 @@ components:
         - internal_error
         - invalid_credentials
         - inactive_admin
+        - invalid_bootstrap_token
+        - expired_bootstrap_token
+        - bootstrap_token_used
     HealthEnvelope:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
@@ -804,6 +838,43 @@ components:
         extend_days:
           type: integer
           minimum: 1
+    CreateNodeBootstrapTokenRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        region:
+          type: string
+        country_code:
+          type: string
+        hostname:
+          type: string
+        expires_in_minutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          default: 30
+    NodeBootstrapToken:
+      type: object
+      required: [id, node_id, bootstrap_token, expires_at]
+      properties:
+        id:
+          type: string
+        node_id:
+          type: string
+        bootstrap_token:
+          type: string
+          description: Plaintext one-time bootstrap token. It is returned only in this response.
+        expires_at:
+          type: string
+          format: date-time
+    NodeBootstrapTokenEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/NodeBootstrapToken"
     RegisterNodeRequest:
       type: object
       required: [bootstrap_token, agent_version]
@@ -826,7 +897,14 @@ components:
           type: string
         status:
           type: string
-          enum: [registered]
+          enum: [active]
+        drain_state:
+          type: string
+          enum: [active, draining, drained]
+        registered_at:
+          type: string
+          format: date-time
+          nullable: true
     RegisterNodeEnvelope:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
@@ -844,7 +922,7 @@ components:
           type: string
         status:
           type: string
-          enum: [registered, healthy, degraded, offline]
+          enum: [pending, active, unhealthy, drained, disabled]
         active_revision:
           type: integer
           minimum: 0
@@ -859,13 +937,17 @@ components:
           type: string
         status:
           type: string
-          enum: [registered, healthy, degraded, offline]
+          enum: [pending, active, unhealthy, drained, disabled]
         drain_state:
           type: string
           enum: [active, draining, drained]
         active_revision:
           type: integer
           minimum: 0
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
     NodeHeartbeatEnvelope:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"

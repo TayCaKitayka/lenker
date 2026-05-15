@@ -31,7 +31,7 @@ Current repository state:
 - OpenAPI draft and lightweight validation are in place.
 - GitHub Actions runs backend and OpenAPI checks.
 - `node-agent` foundation exists.
-- `panel-api` and `node-agent` have a first registration and heartbeat contract.
+- `panel-api` and `node-agent` have a bootstrap token, registration, and heartbeat contract.
 
 Not ready yet:
 
@@ -79,6 +79,7 @@ Backend foundation:
 - admin-protected plans API
 - admin-protected subscriptions API
 - `POST /api/v1/nodes/register`
+- `POST /api/v1/nodes/bootstrap-token`
 - `POST /api/v1/nodes/{id}/heartbeat`
 
 Node-agent foundation:

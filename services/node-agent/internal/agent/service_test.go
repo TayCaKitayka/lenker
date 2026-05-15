@@ -27,6 +27,15 @@ func TestBuildRegistrationPayload(t *testing.T) {
 	}
 }
 
+func TestRegisteredIdentityStartsActive(t *testing.T) {
+	service := NewService(Identity{NodeID: "node-1"})
+
+	status := service.Status()
+	if status.Status != StatusActive || !status.Registered {
+		t.Fatalf("expected active registered status, got %#v", status)
+	}
+}
+
 func TestBuildHeartbeatPayloadRequiresNodeID(t *testing.T) {
 	service := NewService(Identity{})
 
@@ -46,5 +55,8 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	}
 	if payload.NodeID != "node-1" || payload.AgentVersion == "" || payload.SentAt != now {
 		t.Fatalf("unexpected payload: %#v", payload)
+	}
+	if payload.Status != StatusActive {
+		t.Fatalf("expected active status, got %q", payload.Status)
 	}
 }

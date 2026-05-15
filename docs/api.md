@@ -196,13 +196,23 @@ List managed nodes.
 
 Create a one-time node bootstrap token.
 
+Current implementation note:
+
+This admin-protected endpoint creates a pending node and returns the plaintext
+bootstrap token only once. The database stores only a token hash, expiry, and
+used timestamp.
+
 #### `POST /nodes/register`
 
 Complete node registration. Intended for the node agent.
 
 Current implementation note:
 
-The first backend slice implements `POST /api/v1/nodes/register` with a bootstrap token payload and returns a node token for subsequent heartbeats. Full mTLS bootstrap and certificate rotation remain future work inside `MVP v0.1`.
+The current backend slice validates an active, unexpired, unused bootstrap
+token, consumes it on success, activates the pending node, and returns a node
+token for subsequent heartbeats. Invalid, expired, and reused bootstrap tokens
+are rejected with explicit error codes. Full mTLS bootstrap and certificate
+rotation remain future work inside `MVP v0.1`.
 
 #### `POST /nodes/{nodeId}/heartbeat`
 
@@ -210,7 +220,11 @@ Record a node-agent heartbeat.
 
 Current implementation note:
 
-The first backend slice accepts `Authorization: Bearer <node_token>` and updates basic node status, agent version, active revision, and last health timestamp. It does not store metrics, logs, config blobs, or traffic accounting.
+The current backend slice accepts `Authorization: Bearer <node_token>` and
+updates basic node status, agent version, active revision, `last_seen_at`, and
+last health timestamp. Unknown nodes return `not_found`. It does not register
+new nodes, and it does not store metrics, logs, config blobs, or traffic
+accounting.
 
 #### `GET /nodes/{nodeId}`
 

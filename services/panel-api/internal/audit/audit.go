@@ -36,6 +36,9 @@ const (
 	ActionSubscriptionCreate     = "subscription.create"
 	ActionSubscriptionUpdate     = "subscription.update"
 	ActionSubscriptionRenew      = "subscription.renew"
+	ActionNodeBootstrapToken     = "node.bootstrap_token.create"
+	ActionNodeRegister           = "node.register"
+	ActionNodeHeartbeat          = "node.heartbeat"
 
 	OutcomeSuccess = "success"
 	OutcomeFailure = "failure"

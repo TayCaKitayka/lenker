@@ -4,9 +4,11 @@ import "time"
 
 const (
 	StatusBootstrapping = "bootstrapping"
-	StatusRegistered    = "registered"
-	StatusHealthy       = "healthy"
-	StatusDegraded      = "degraded"
+	StatusPending       = "pending"
+	StatusActive        = "active"
+	StatusUnhealthy     = "unhealthy"
+	StatusDrained       = "drained"
+	StatusDisabled      = "disabled"
 )
 
 type Identity struct {
@@ -34,9 +36,11 @@ type RegistrationPayload struct {
 }
 
 type RegistrationResponse struct {
-	NodeID    string `json:"node_id"`
-	NodeToken string `json:"node_token"`
-	Status    string `json:"status"`
+	NodeID       string    `json:"node_id"`
+	NodeToken    string    `json:"node_token"`
+	Status       string    `json:"status"`
+	DrainState   string    `json:"drain_state,omitempty"`
+	RegisteredAt time.Time `json:"registered_at,omitempty"`
 }
 
 type HeartbeatPayload struct {

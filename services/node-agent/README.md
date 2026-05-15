@@ -56,8 +56,36 @@ Local HTTP surface:
 
 Panel contract currently implemented:
 
+- `POST /api/v1/nodes/bootstrap-token`
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
+
+Registration payload:
+
+```json
+{
+  "node_id": "<node_id-from-bootstrap-token-response>",
+  "bootstrap_token": "<plaintext-bootstrap-token>",
+  "agent_version": "0.1.0-dev",
+  "hostname": "node-hostname"
+}
+```
+
+Heartbeat payload:
+
+```json
+{
+  "node_id": "<registered-node-id>",
+  "agent_version": "0.1.0-dev",
+  "status": "active",
+  "active_revision": 0,
+  "sent_at": "2026-05-15T00:00:00Z"
+}
+```
+
+Current node lifecycle statuses are `pending`, `active`, `unhealthy`,
+`drained`, and `disabled`. The node-agent foundation builds payloads only; it
+does not implement a retrying network client or mTLS certificate lifecycle yet.
 
 Conservative note:
 

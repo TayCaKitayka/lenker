@@ -45,7 +45,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		Users:         users.NewHandler(logger, store.Users(), adminSession.RequireAdmin).WithAudit(auditRecorder),
 		Plans:         plans.NewHandler(logger, store.Plans(), adminSession.RequireAdmin).WithAudit(auditRecorder),
 		Subscriptions: subscriptions.NewHandler(logger, store.Subscriptions(), adminSession.RequireAdmin).WithAudit(auditRecorder),
-		Nodes:         nodes.NewHandler(logger, store.Nodes()),
+		Nodes:         nodes.NewHandler(logger, store.Nodes(), adminSession.RequireAdmin).WithAudit(auditRecorder),
 	})
 
 	server := &http.Server{

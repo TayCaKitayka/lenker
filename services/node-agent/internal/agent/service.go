@@ -22,7 +22,7 @@ func NewService(identity Identity) *Service {
 	registered := identity.NodeID != ""
 	status := StatusBootstrapping
 	if registered {
-		status = StatusRegistered
+		status = StatusActive
 	}
 
 	return &Service{
@@ -70,8 +70,8 @@ func (s *Service) BuildHeartbeatPayload(now time.Time) (HeartbeatPayload, error)
 
 func (s *Service) MarkHeartbeatSent(at time.Time) {
 	s.status.LastHeartbeatAt = at.UTC()
-	if s.status.Status == StatusRegistered {
-		s.status.Status = StatusHealthy
+	if s.status.Status == StatusPending {
+		s.status.Status = StatusActive
 	}
 }
 

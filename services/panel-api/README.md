@@ -27,6 +27,9 @@ Current foundation:
 - admin session validation middleware using `Authorization: Bearer <session_token>`
 - bcrypt password verification for admin accounts
 - minimal admin CRUD slice for users, plans, and subscriptions
+- admin-created one-time node bootstrap tokens
+- node registration with token expiry and one-time token consumption
+- node heartbeat status and `last_seen_at` updates
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -65,6 +68,7 @@ Implemented foundation routes:
 - `GET /api/v1/subscriptions/{id}`
 - `PATCH /api/v1/subscriptions/{id}`
 - `POST /api/v1/subscriptions/{id}/renew`
+- `POST /api/v1/nodes/bootstrap-token`
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
 
@@ -73,10 +77,11 @@ Admin-only routes:
 - all `/api/v1/users*` routes
 - all `/api/v1/plans*` routes
 - all `/api/v1/subscriptions*` routes
+- `POST /api/v1/nodes/bootstrap-token`
 
 Node-agent contract routes:
 
-- `POST /api/v1/nodes/register` accepts the first node registration payload and returns a node token
+- `POST /api/v1/nodes/register` accepts a one-time bootstrap token and returns a node token
 - `POST /api/v1/nodes/{id}/heartbeat` accepts a node heartbeat with `Authorization: Bearer <node_token>`
 
 Use the token returned by admin login:
@@ -102,6 +107,7 @@ Not included here yet:
 - devices, key rotation, and export flows
 - full node orchestration engine
 - full mTLS or certificate rotation
+- config delivery or rollback executor
 - billing
 - marketplace
 - VPN or Xray logic
@@ -227,6 +233,39 @@ curl -s http://localhost:8080/api/v1/subscriptions \
 curl -s http://localhost:8080/api/v1/subscriptions \
   -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
 ```
+
+Create a one-time node bootstrap token:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/bootstrap-token \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"finland-1","region":"eu","country_code":"FI","hostname":"node-fi-1","expires_in_minutes":30}'
+```
+
+Copy `data.bootstrap_token` and `data.node_id` from the response. The plaintext
+bootstrap token is shown only once; only its hash is stored.
+
+Register the node-agent:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/register \
+  -H 'Content-Type: application/json' \
+  -d '{"node_id":"<node_id>","bootstrap_token":"<bootstrap_token>","agent_version":"0.1.0-dev","hostname":"node-fi-1"}'
+```
+
+Copy `data.node_token` from the registration response and use it for heartbeat:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/<node_id>/heartbeat \
+  -H "Authorization: Bearer <node_token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"node_id":"<node_id>","agent_version":"0.1.0-dev","status":"active","active_revision":0}'
+```
+
+Registration rejects invalid, expired, and already used bootstrap tokens. A
+heartbeat for an unknown node returns `not_found`; heartbeat does not create
+nodes.
 
 Useful local targets from the repository root:
 

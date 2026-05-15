@@ -11,7 +11,7 @@ This directory contains draft OpenAPI contracts for Lenker APIs.
 - admin-protected users endpoints
 - admin-protected plans endpoints
 - admin-protected subscriptions endpoints
-- node-agent registration and heartbeat endpoints
+- node bootstrap token, registration, and heartbeat endpoints
 
 This is a draft contract for the implemented backend slice. It intentionally does not include marketplace, billing, broader node management APIs, client app APIs, devices, key rotation, export flows, or VPN/Xray config delivery.
 

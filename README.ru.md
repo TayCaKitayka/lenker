@@ -31,7 +31,7 @@ Lenker находится в активной foundation-разработке.
 - OpenAPI draft и lightweight validation;
 - GitHub Actions для backend и OpenAPI checks;
 - foundation для `node-agent`;
-- первый contract между `panel-api` и `node-agent` для registration и heartbeat.
+- первый contract между `panel-api` и `node-agent` для bootstrap token, registration и heartbeat.
 
 Пока не готово:
 
@@ -79,6 +79,7 @@ Backend foundation:
 - admin-protected plans API;
 - admin-protected subscriptions API;
 - `POST /api/v1/nodes/register`;
+- `POST /api/v1/nodes/bootstrap-token`;
 - `POST /api/v1/nodes/{id}/heartbeat`.
 
 Node-agent foundation:

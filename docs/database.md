@@ -200,8 +200,32 @@ Suggested fields:
 - `agent_version`
 - `xray_version`
 - `last_health_at`
+- `last_seen_at`
+- `registered_at`
 - `created_at`
 - `updated_at`
+
+### node_bootstrap_tokens
+
+One-time bootstrap credentials created by an admin before a node-agent registers.
+The plaintext token is returned only once and only its hash is stored.
+
+Suggested fields:
+
+- `id`
+- `node_id`
+- `token_hash`
+- `status`
+- `expires_at`
+- `used_at`
+- `created_by_admin_id`
+- `created_at`
+- `updated_at`
+
+Conservative note:
+
+Bootstrap tokens are separate from long-lived node heartbeat tokens. Tokens are
+one-time use and expire; registration consumes the token and stores only hashes.
 
 ### node_groups
 
