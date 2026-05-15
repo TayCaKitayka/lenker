@@ -47,5 +47,6 @@ tmp/
 *.tmp
 
 vpn.md
+vpn_new.md
 AGENTS.md
 .codex-project/
