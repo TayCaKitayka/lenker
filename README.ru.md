@@ -202,9 +202,19 @@ GitHub Actions запускает `make test` на push и pull requests.
 - [OpenAPI notes](docs/openapi/README.md)
 - [Roadmap](docs/roadmap.md)
 - [Business model boundary](docs/business-model.md)
+- [Licensing notes](docs/licensing.md)
 - [Architecture decision records](docs/adr/README.md)
 - [panel-api README](services/panel-api/README.md)
 - [node-agent README](services/node-agent/README.md)
+
+## Governance
+
+- [License](LICENSE)
+- [Licensing notes](docs/licensing.md)
+- [Security policy](SECURITY.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Trademark policy](TRADEMARK.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## Business Model Boundary
 
@@ -249,13 +259,14 @@ Post-MVP темы вроде marketplace, provider verification, billing adapter
 
 ## License Note
 
-Финальная license policy ещё не зафиксирована полностью.
+Lenker сейчас лицензируется как `AGPL-3.0-only` через root
+[LICENSE](LICENSE).
 
-Текущая рекомендация:
+Этот выбор нужен, чтобы self-hosted core оставался open-source, а закрытые
+hosted forks control plane были менее привлекательны. Будущие SDK или specs
+могут позже получить более permissive license, но сейчас такого разделения нет.
 
-- AGPL-3.0 для `panel-api` и `node-agent`;
-- совместимая open-source license для `panel-web` и `client-app`;
-- permissive licensing для будущих SDK/specs, где это полезно;
-- отдельная trademark policy для имени и логотипа Lenker.
+См. [docs/licensing.md](docs/licensing.md) и [TRADEMARK.md](TRADEMARK.md) для
+текущих границ проекта.
 
 Не считайте licensing финальным, пока не добавлены `LICENSE` и license ADR.

@@ -17,6 +17,7 @@ Current ADRs:
 - ADR-005 PostgreSQL as primary database
 - ADR-006 HTTPS + mTLS for panel-node transport
 - ADR-007 open-source core and commercial services
+- ADR-008 licensing and project governance
 
 Conservative note:
 

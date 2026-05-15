@@ -202,9 +202,19 @@ GitHub Actions runs `make test` on push and pull requests.
 - [OpenAPI notes](docs/openapi/README.md)
 - [Roadmap](docs/roadmap.md)
 - [Business model boundary](docs/business-model.md)
+- [Licensing notes](docs/licensing.md)
 - [Architecture decision records](docs/adr/README.md)
 - [panel-api README](services/panel-api/README.md)
 - [node-agent README](services/node-agent/README.md)
+
+## Governance
+
+- [License](LICENSE)
+- [Licensing notes](docs/licensing.md)
+- [Security policy](SECURITY.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Trademark policy](TRADEMARK.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## Business Model Boundary
 
@@ -249,13 +259,14 @@ Before opening large PRs, align with the fixed `MVP v0.1` scope and avoid adding
 
 ## License Note
 
-The final license policy is not fully settled yet.
+Lenker is currently licensed under `AGPL-3.0-only` via the root
+[LICENSE](LICENSE).
 
-The current recommendation is:
+This choice is intended to keep the self-hosted core open-source and discourage
+closed hosted forks of the control plane. Future SDKs or specs may receive a
+more permissive license later, but no such split exists today.
 
-- AGPL-3.0 for `panel-api` and `node-agent`
-- a compatible open-source license for `panel-web` and `client-app`
-- permissive licensing for future SDKs/specs where useful
-- separate trademark policy for the Lenker name and logo
+See [docs/licensing.md](docs/licensing.md) and [TRADEMARK.md](TRADEMARK.md) for
+the current project boundary.
 
 Do not assume final licensing until a `LICENSE` file and license ADR are added.
