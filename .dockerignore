@@ -1,0 +1,22 @@
+.git
+.github
+.DS_Store
+**/.DS_Store
+__MACOSX
+AI Memory
+.codex-project
+AGENTS.md
+vpn.md
+vpn_new.md
+.env
+.env.*
+!.env.example
+node_modules
+apps/panel-web/dist
+apps/client-app/build
+.dart_tool
+dist
+build
+coverage.out
+*.log
+tmp

@@ -1,0 +1,95 @@
+name: lenker-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lenker
+      POSTGRES_USER: lenker
+      POSTGRES_PASSWORD: lenker
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lenker -d lenker"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    volumes:
+      - ../../migrations:/migrations:ro
+    command:
+      - -path
+      - /migrations
+      - -database
+      - postgres://lenker:lenker@postgres:5432/lenker?sslmode=disable
+      - up
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  panel-api:
+    image: lenker-panel-api:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/panel-api.Dockerfile
+    environment:
+      LENKER_APP_ENV: development
+      LENKER_HTTP_ADDR: :8080
+      LENKER_LOG_LEVEL: info
+      LENKER_SHUTDOWN_TIMEOUT_SECONDS: 10
+      LENKER_DATABASE_URL: postgres://lenker:lenker@postgres:5432/lenker?sslmode=disable
+      LENKER_DATABASE_PING: "true"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  bootstrap-admin:
+    image: lenker-panel-api:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/panel-api.Dockerfile
+    entrypoint: ["/usr/local/bin/bootstrap-admin"]
+    environment:
+      LENKER_DATABASE_URL: postgres://lenker:lenker@postgres:5432/lenker?sslmode=disable
+      ADMIN_EMAIL: owner@example.com
+      ADMIN_PASSWORD: change-me-now
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    profiles:
+      - setup
+
+  node-agent:
+    image: lenker-node-agent:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/node-agent.Dockerfile
+    environment:
+      LENKER_AGENT_HTTP_ADDR: :8090
+      LENKER_AGENT_PANEL_URL: http://panel-api:8080
+      LENKER_AGENT_STATE_DIR: /var/lib/lenker/node-agent
+      LENKER_AGENT_LOG_LEVEL: info
+      LENKER_AGENT_HEARTBEAT_INTERVAL: 30s
+      LENKER_AGENT_TLS_ENABLED: "false"
+    ports:
+      - "8090:8090"
+    volumes:
+      - node-agent-state:/var/lib/lenker/node-agent
+    depends_on:
+      panel-api:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  node-agent-state:

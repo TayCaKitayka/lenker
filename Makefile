@@ -3,8 +3,10 @@ MIGRATE ?= migrate
 PANEL_API_DIR ?= services/panel-api
 NODE_AGENT_DIR ?= services/node-agent
 OPENAPI_SPEC ?= docs/openapi/panel-api.v1.yaml
+DOCKER_COMPOSE ?= docker compose
+DOCKER_COMPOSE_FILE ?= deploy/docker/docker-compose.local.yml
 
-.PHONY: migrate-up migrate-down migrate-force bootstrap-admin run-panel-api run-node-agent test-panel-api test-node-agent openapi-lint validate-openapi test
+.PHONY: migrate-up migrate-down migrate-force bootstrap-admin run-panel-api run-node-agent test-panel-api test-node-agent openapi-lint validate-openapi test docker-build docker-up docker-down docker-logs docker-ps docker-bootstrap-admin docker-smoke
 
 migrate-up:
 	@if [ -z "$$LENKER_DATABASE_URL" ]; then echo "LENKER_DATABASE_URL is required"; exit 1; fi
@@ -41,3 +43,25 @@ openapi-lint validate-openapi:
 	@if command -v ruby >/dev/null 2>&1; then ruby scripts/validate-openapi.rb $(OPENAPI_SPEC); else echo "ruby not found; skipping OpenAPI validation"; fi
 
 test: test-panel-api test-node-agent openapi-lint
+
+docker-build:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) build
+
+docker-up:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) up -d postgres migrate panel-api node-agent
+
+docker-down:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) down
+
+docker-logs:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) logs -f --tail=200
+
+docker-ps:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) ps
+
+docker-bootstrap-admin:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) --profile setup run --rm bootstrap-admin
+
+docker-smoke:
+	curl -fsS http://localhost:8080/healthz
+	curl -fsS http://localhost:8090/healthz
