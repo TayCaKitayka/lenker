@@ -285,7 +285,9 @@ region. The rendered `config` object follows an Xray-like shape with `log`,
 stores revision number, status, bundle hash, signature, signer, rollback target
 metadata, and timestamps. Panel-api runs a lightweight renderer precheck before
 signing; node-agent enforces the authoritative compatibility gate before staged
-files become active. It does not restart processes.
+files become active. If `LENKER_AGENT_XRAY_BIN` is configured, node-agent also
+runs a one-shot Xray binary dry-run before the staged -> active switch. It does
+not restart processes.
 
 #### `GET /nodes/{nodeId}/config-revisions`
 
@@ -307,7 +309,8 @@ that the token belongs to the node in the path, and returns only the latest
 pending signed config skeleton payload metadata for that node. If the node is
 unknown, the token does not match, the node is disabled, or no pending revision
 exists, it returns `not_found`. The node-agent validates the payload and
-serializes local config artifacts before reporting `applied`.
+serializes local config artifacts before reporting `applied`. Optional Xray
+binary dry-run validation runs here when configured on the agent.
 
 #### `POST /nodes/{nodeId}/config-revisions/{revisionId}/report`
 
@@ -321,8 +324,9 @@ only its own revision as `applied` or `failed`. Applied reports set the revision
 `applied_at` timestamp and update the node active revision. Failed reports set
 `failed_at` and persist a concise `error_message`; node active revision is not
 advanced on failed validation. Xray compatibility failures use stable summaries
-such as `invalid_xray_config:invalid_routing_outbound_reference`. It does not
-execute rollback, restart processes, or control Xray.
+such as `invalid_xray_config:invalid_routing_outbound_reference`; optional Xray
+binary dry-run failures use `xray_dry_run_failed:<reason>`. It does not execute
+rollback, restart processes, or control Xray.
 
 #### `POST /nodes/{nodeId}/config-revisions/{revisionId}/rollback`
 

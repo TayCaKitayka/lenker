@@ -17,6 +17,7 @@ type Identity struct {
 	NodeToken      string `json:"-"`
 	PanelURL       string `json:"panel_url,omitempty"`
 	StateDir       string `json:"-"`
+	XrayBin        string `json:"-"`
 }
 
 type Status struct {

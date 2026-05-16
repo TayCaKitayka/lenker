@@ -169,11 +169,14 @@ and payload shape, enforces an explicit Xray compatibility gate for the current
 VLESS + Reality + XTLS Vision shape, writes revision-specific and staged
 artifacts, switches active local config files only after staging succeeds, stores
 metadata in memory, and reports `applied` or `failed` status back to the panel.
-Panel-api also runs a lightweight renderer precheck before signing, but
-node-agent is the authoritative apply boundary. Rollback is a revision-level
-file switch foundation: panel-api can create a pending rollback revision from an
-applied source, and the agent applies it through the same staged -> active local
-file path. No Xray process is controlled by this layer.
+When `LENKER_AGENT_XRAY_BIN` is configured, node-agent also performs a one-shot
+`xray run -test -config <candidate>` dry-run after internal validation and
+before staged -> active. Panel-api also runs a lightweight renderer precheck
+before signing, but node-agent is the authoritative apply boundary. Rollback is
+a revision-level file switch foundation: panel-api can create a pending rollback
+revision from an applied source, and the agent applies it through the same
+validation and staged -> active local file path. No Xray daemon, reload, restart,
+or supervisor is controlled by this layer.
 
 ### Boundary 3: User App to Panel
 

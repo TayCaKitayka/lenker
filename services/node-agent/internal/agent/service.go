@@ -33,16 +33,25 @@ type Service struct {
 	identity        Identity
 	status          Status
 	configRevisions map[int]ConfigRevision
+	xrayDryRun      XrayDryRunValidator
 }
 
-func NewService(identity Identity) *Service {
+type ServiceOption func(*Service)
+
+func WithXrayDryRunValidator(validator XrayDryRunValidator) ServiceOption {
+	return func(s *Service) {
+		s.xrayDryRun = validator
+	}
+}
+
+func NewService(identity Identity, options ...ServiceOption) *Service {
 	registered := identity.NodeID != ""
 	status := StatusBootstrapping
 	if registered {
 		status = StatusActive
 	}
 
-	return &Service{
+	service := &Service{
 		identity: identity,
 		status: Status{
 			NodeID:     identity.NodeID,
@@ -52,6 +61,15 @@ func NewService(identity Identity) *Service {
 		},
 		configRevisions: make(map[int]ConfigRevision),
 	}
+	if strings.TrimSpace(identity.XrayBin) != "" {
+		service.xrayDryRun = CommandXrayDryRunValidator{Binary: identity.XrayBin}
+	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 func (s *Service) Status() Status {
@@ -131,7 +149,14 @@ func (s *Service) ApplyConfigRevisionMetadata(revision ConfigRevision) error {
 }
 
 func (s *Service) ApplyConfigRevision(revision ConfigRevision) error {
+	return s.ApplyConfigRevisionWithContext(context.Background(), revision)
+}
+
+func (s *Service) ApplyConfigRevisionWithContext(ctx context.Context, revision ConfigRevision) error {
 	if err := s.ValidateAndStoreConfigRevision(revision); err != nil {
+		return err
+	}
+	if err := s.ValidateXrayDryRun(ctx, revision); err != nil {
 		return err
 	}
 	artifact, err := s.SerializeConfigRevision(revision)
@@ -191,7 +216,7 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 	if reportTime.IsZero() {
 		reportTime = time.Now().UTC()
 	}
-	if err := s.ApplyConfigRevision(revision); err != nil {
+	if err := s.ApplyConfigRevisionWithContext(ctx, revision); err != nil {
 		reportErr := client.ReportConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken, revision.ID, ConfigRevisionReport{
 			Status:       "failed",
 			FailedAt:     reportTime,
@@ -231,6 +256,51 @@ func (s *Service) SerializeConfigRevision(revision ConfigRevision) (ConfigArtifa
 		return ConfigArtifact{}, err
 	}
 	return s.ActivateStagedConfigRevision(revision, staged)
+}
+
+func (s *Service) ValidateXrayDryRun(ctx context.Context, revision ConfigRevision) error {
+	if s.xrayDryRun == nil {
+		return nil
+	}
+	stateDir := strings.TrimSpace(s.identity.StateDir)
+	if stateDir == "" {
+		return ErrStateDirRequired
+	}
+	config, ok := revision.Bundle["config"].(map[string]any)
+	if !ok {
+		return ErrInvalidConfigPayload
+	}
+
+	candidateDir := filepath.Join(stateDir, "candidates")
+	if err := os.MkdirAll(candidateDir, 0o700); err != nil {
+		return fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	candidate, err := os.CreateTemp(candidateDir, "candidate-*.json")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	candidatePath := candidate.Name()
+	defer os.Remove(candidatePath)
+
+	configBody, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		_ = candidate.Close()
+		return err
+	}
+	configBody = append(configBody, '\n')
+	if _, err := candidate.Write(configBody); err != nil {
+		_ = candidate.Close()
+		return fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	if err := candidate.Chmod(0o600); err != nil {
+		_ = candidate.Close()
+		return fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	if err := candidate.Close(); err != nil {
+		return fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+
+	return s.xrayDryRun.Validate(ctx, candidatePath)
 }
 
 func (s *Service) StageConfigRevision(revision ConfigRevision) (ConfigArtifact, error) {
@@ -533,6 +603,12 @@ func configRevisionErrorMessage(err error) string {
 			return "invalid_xray_config:" + validationErr.Reason
 		}
 		return "invalid_xray_config"
+	case errors.Is(err, ErrXrayDryRunFailed):
+		var dryRunErr XrayDryRunError
+		if errors.As(err, &dryRunErr) && dryRunErr.Reason != "" {
+			return "xray_dry_run_failed:" + dryRunErr.Reason
+		}
+		return "xray_dry_run_failed"
 	case errors.Is(err, ErrInvalidConfigPayload):
 		return "invalid config payload"
 	case errors.Is(err, ErrInvalidConfigRevision):

@@ -352,7 +352,9 @@ not write runtime Xray config files, restart or control Xray.
 Panel-api runs a lightweight render precheck before signing new deploy or
 rollback revisions. The authoritative Xray compatibility gate lives in
 node-agent, where the signed config object must pass the single-path VLESS
-Reality validation contract before staged files can become active.
+Reality validation contract before staged files can become active. Node-agent
+can also run an optional one-shot Xray binary dry-run before apply when
+`LENKER_AGENT_XRAY_BIN` is configured.
 
 Create a config revision metadata record:
 
@@ -403,6 +405,9 @@ curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<r
   -H 'Content-Type: application/json' \
   -d '{"status":"failed","error_message":"invalid_xray_config:missing_stream_settings"}'
 ```
+
+Optional Xray binary dry-run failures are reported the same way, with compact
+messages such as `xray_dry_run_failed:invalid_config`.
 
 Applied reports update revision status and node `active_revision`. Failed
 reports persist `failed_at` and `error_message`, and node `active_revision` does

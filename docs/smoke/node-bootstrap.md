@@ -191,9 +191,12 @@ Expected result:
 - if no pending revision exists, the endpoint returns `not_found`.
 
 The node-agent unit tests verify that the fetched metadata can be hash/signature
-validated, checked against the single-path Xray compatibility gate, serialized
-to local config artifacts, stored in memory, and reflected in the heartbeat
-active revision payload.
+validated, checked against the single-path Xray compatibility gate, optionally
+checked through a configured Xray binary dry-run, serialized to local config
+artifacts, stored in memory, and reflected in the heartbeat active revision
+payload. Set `LENKER_AGENT_XRAY_BIN=/path/to/xray` to enable the optional
+one-shot `xray run -test -config <candidate>` boundary. Leave it unset to use
+the default internal validation path.
 
 Report the pending revision as applied:
 
@@ -221,6 +224,9 @@ curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisi
   -d '{"status":"failed","error_message":"invalid_xray_config:missing_stream_settings"}'
 ```
 
+Optional Xray binary dry-run failures use the same failed report path with a
+compact reason such as `xray_dry_run_failed:invalid_config`.
+
 Expected result:
 
 - `data.status` is `failed`;
@@ -230,8 +236,8 @@ Expected result:
 
 This smoke path still does not restart processes or control Xray. The node-agent
 compatibility and serialization foundation writes local artifacts only under its
-state directory after hash/signature validation and Xray compatibility validation
-both pass:
+state directory after hash/signature validation, internal Xray compatibility
+validation, and optional Xray binary dry-run validation all pass:
 
 ```text
 revisions/<revision_number>/config.json

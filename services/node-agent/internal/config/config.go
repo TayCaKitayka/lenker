@@ -15,6 +15,7 @@ type Config struct {
 	NodeToken          string
 	PanelURL           string
 	StateDir           string
+	XrayBin            string
 	LogLevel           string
 	HeartbeatInterval  time.Duration
 	ConfigPollInterval time.Duration
@@ -43,6 +44,7 @@ func Load() (Config, error) {
 		NodeToken:          strings.TrimSpace(os.Getenv("LENKER_AGENT_NODE_TOKEN")),
 		PanelURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("LENKER_AGENT_PANEL_URL")), "/"),
 		StateDir:           stringFromEnv("LENKER_AGENT_STATE_DIR", ".lenker-node-agent"),
+		XrayBin:            strings.TrimSpace(os.Getenv("LENKER_AGENT_XRAY_BIN")),
 		LogLevel:           stringFromEnv("LENKER_AGENT_LOG_LEVEL", "info"),
 		HeartbeatInterval:  heartbeatInterval,
 		ConfigPollInterval: configPollInterval,

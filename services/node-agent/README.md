@@ -117,12 +117,27 @@ The validation gate is focused on the current single MVP path. It requires the
 rendered config object to contain `log`, `policy`, `stats`, one VLESS inbound,
 TCP + Reality stream settings, coherent VLESS client entries, a direct/freedom
 outbound, and routing rules that reference known inbound/outbound tags. It is
-not a full Xray schema validator and it does not run the Xray binary.
+not a full Xray schema validator.
+
+Optional Xray binary dry-run validation can be enabled with
+`LENKER_AGENT_XRAY_BIN=/path/to/xray`. When configured, the agent writes a
+temporary candidate config after internal validation and runs:
+
+```sh
+xray run -test -config <candidate-config>
+```
+
+Only a successful one-shot validation lets the agent continue to the staged ->
+active file switch. Without `LENKER_AGENT_XRAY_BIN`, the current internal
+validation and staged apply path remains unchanged. The agent does not download
+Xray, start it as a daemon, reload it, restart it, or supervise it.
 
 After validation, the agent reports `applied` to panel-api. Validation failures
 such as bad hash, bad signature, malformed payload, incompatible Xray config, or
-local artifact write failure are reported as `failed` with a concise
-`error_message` such as `invalid_xray_config:missing_stream_settings`.
+Xray dry-run failure, or local artifact write failure are reported as `failed`
+with a concise `error_message` such as
+`invalid_xray_config:missing_stream_settings` or
+`xray_dry_run_failed:invalid_config`.
 
 Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 
@@ -143,9 +158,9 @@ hash, signer, rollback target revision, operation kind, source revision metadata
 when present, and config path references.
 
 Rollback is file-level only. A rollback-originated pending revision is applied
-through the same staged -> active path, so active config files can switch back to
-a previous rendered config artifact. This step does not start, restart, reload,
-or supervise Xray.
+through the same internal validation, optional Xray dry-run, and staged ->
+active path, so active config files can switch back to a previous rendered
+config artifact. This step does not start, restart, reload, or supervise Xray.
 
 Not included here yet:
 

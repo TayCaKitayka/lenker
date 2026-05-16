@@ -25,6 +25,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		NodeToken:      cfg.NodeToken,
 		PanelURL:       cfg.PanelURL,
 		StateDir:       cfg.StateDir,
+		XrayBin:        cfg.XrayBin,
 	})
 	panelClient := agent.PanelClient{BaseURL: cfg.PanelURL}
 

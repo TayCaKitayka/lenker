@@ -348,6 +348,76 @@ func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
 	}
 }
 
+func TestPollPendingConfigRevisionDryRunSuccessContinuesApply(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	validator := &fakeXrayDryRunValidator{}
+	service := NewService(
+		Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: t.TempDir(), XrayBin: "/usr/local/bin/xray"},
+		WithXrayDryRunValidator(validator),
+	)
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if err != nil {
+		t.Fatalf("expected applied report: %v", err)
+	}
+	if !applied {
+		t.Fatalf("expected revision applied")
+	}
+	if !validator.called {
+		t.Fatalf("expected xray dry-run validator to be called")
+	}
+	if !json.Valid(validator.configBody) {
+		t.Fatalf("expected candidate config json: %s", string(validator.configBody))
+	}
+	if !client.reported || client.report.Status != "applied" || client.report.ActiveRevision != 4 {
+		t.Fatalf("expected applied report, got %#v", client.report)
+	}
+	if service.Status().ActiveRevision != 4 || service.Status().ConfigArtifactPath == "" {
+		t.Fatalf("expected active revision and artifact after dry-run success: %#v", service.Status())
+	}
+}
+
+func TestPollPendingConfigRevisionDryRunFailureReportsFailedAndKeepsActive(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	stateDir := t.TempDir()
+	activeDir := filepath.Join(stateDir, "active")
+	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+		t.Fatalf("expected active dir: %v", err)
+	}
+	activeConfigPath := filepath.Join(activeDir, "config.json")
+	if err := os.WriteFile(activeConfigPath, []byte(`{"revision":"old"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("expected old active config: %v", err)
+	}
+	validator := &fakeXrayDryRunValidator{err: XrayDryRunError{Reason: "invalid_inbound"}}
+	service := NewService(
+		Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: stateDir, XrayBin: "/usr/local/bin/xray"},
+		WithXrayDryRunValidator(validator),
+	)
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if !errors.Is(err, ErrXrayDryRunFailed) {
+		t.Fatalf("expected dry-run error, got %v", err)
+	}
+	if applied {
+		t.Fatalf("dry-run failure must not apply revision")
+	}
+	if service.Status().ActiveRevision != 0 || service.Status().LastAppliedRevision != 0 {
+		t.Fatalf("dry-run failure must not advance status: %#v", service.Status())
+	}
+	body, err := os.ReadFile(activeConfigPath)
+	if err != nil {
+		t.Fatalf("expected active config to remain readable: %v", err)
+	}
+	if string(body) != `{"revision":"old"}`+"\n" {
+		t.Fatalf("dry-run failure changed active config: %s", string(body))
+	}
+	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != "xray_dry_run_failed:invalid_inbound" {
+		t.Fatalf("expected failed dry-run report, got %#v", client.report)
+	}
+}
+
 func TestPollPendingConfigRevisionReportsFailedForTamperedRevision(t *testing.T) {
 	revision := signedTestConfigRevision(t, "node-1", 4, 3)
 	revision.Bundle["protocol"] = "tampered"
@@ -639,6 +709,54 @@ func TestInvalidRollbackRevisionReportsFailedAndKeepsPreviousActive(t *testing.T
 	}
 }
 
+func TestRollbackRevisionDryRunFailureKeepsPreviousActive(t *testing.T) {
+	stateDir := t.TempDir()
+	setupService := NewService(Identity{NodeID: "node-1", StateDir: stateDir})
+	revisionA := signedTestConfigRevision(t, "node-1", 1, 0)
+	if err := setupService.ApplyConfigRevision(revisionA); err != nil {
+		t.Fatalf("expected revision A apply: %v", err)
+	}
+	previousActive, err := os.ReadFile(setupService.Status().ConfigArtifactPath)
+	if err != nil {
+		t.Fatalf("expected previous active config: %v", err)
+	}
+
+	rollbackRevision := signedTestConfigRevision(t, "node-1", 2, 1)
+	rollbackRevision.Bundle["operation_kind"] = "rollback"
+	rollbackRevision.Bundle["source_revision_id"] = revisionA.ID
+	rollbackRevision.Bundle["source_revision_number"] = revisionA.RevisionNumber
+	resignTestConfigRevision(t, &rollbackRevision)
+	client := &fakePendingConfigRevisionClient{revision: rollbackRevision, ok: true}
+	validator := &fakeXrayDryRunValidator{err: XrayDryRunError{Reason: "reality_dest_rejected"}}
+	pollingService := NewService(
+		Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: stateDir, XrayBin: "/usr/local/bin/xray"},
+		WithXrayDryRunValidator(validator),
+	)
+	pollingService.status.ActiveRevision = 1
+	pollingService.status.LastAppliedRevision = 1
+
+	applied, err := pollingService.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if !errors.Is(err, ErrXrayDryRunFailed) {
+		t.Fatalf("expected dry-run error, got %v", err)
+	}
+	if applied {
+		t.Fatalf("dry-run failed rollback must not be applied")
+	}
+	currentActive, err := os.ReadFile(filepath.Join(stateDir, "active", "config.json"))
+	if err != nil {
+		t.Fatalf("expected active config after failed rollback: %v", err)
+	}
+	if string(currentActive) != string(previousActive) {
+		t.Fatalf("failed rollback dry-run changed active config:\n%s\n---\n%s", string(currentActive), string(previousActive))
+	}
+	if pollingService.Status().ActiveRevision != 1 || pollingService.Status().LastAppliedRevision != 1 {
+		t.Fatalf("failed rollback dry-run must keep active revision: %#v", pollingService.Status())
+	}
+	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != "xray_dry_run_failed:reality_dest_rejected" {
+		t.Fatalf("expected failed rollback dry-run report, got %#v", client.report)
+	}
+}
+
 func TestValidateAndStoreConfigRevisionRejectsInvalidRenderedPayload(t *testing.T) {
 	revision := signedTestConfigRevision(t, "node-1", 4, 3)
 	delete(revision.Bundle, "config")
@@ -648,6 +766,16 @@ func TestValidateAndStoreConfigRevisionRejectsInvalidRenderedPayload(t *testing.
 	err := service.ValidateAndStoreConfigRevision(revision)
 	if !errors.Is(err, ErrInvalidConfigPayload) {
 		t.Fatalf("expected invalid payload, got %v", err)
+	}
+}
+
+func TestCompactXrayDryRunReason(t *testing.T) {
+	reason := compactXrayDryRunReason([]byte("Xray 1.8\nFailed: invalid config: missing inbound\n"))
+	if reason != "xray_1_8_failed_invalid_config_missing_inbound" {
+		t.Fatalf("unexpected compact reason: %q", reason)
+	}
+	if empty := compactXrayDryRunReason(nil); empty != "command_failed" {
+		t.Fatalf("unexpected empty compact reason: %q", empty)
 	}
 }
 
@@ -812,6 +940,24 @@ type fakePendingConfigRevisionClient struct {
 	reportID  string
 	report    ConfigRevisionReport
 	reportErr error
+}
+
+type fakeXrayDryRunValidator struct {
+	called     bool
+	configPath string
+	configBody []byte
+	err        error
+}
+
+func (v *fakeXrayDryRunValidator) Validate(ctx context.Context, configPath string) error {
+	v.called = true
+	v.configPath = configPath
+	body, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	v.configBody = body
+	return v.err
 }
 
 func (c *fakePendingConfigRevisionClient) FetchPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, bool, error) {
