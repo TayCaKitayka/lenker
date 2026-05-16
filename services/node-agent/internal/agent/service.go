@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -23,6 +25,8 @@ var (
 	ErrInvalidConfigBundleHash = errors.New("invalid config bundle hash")
 	ErrInvalidConfigSignature  = errors.New("invalid config bundle signature")
 	ErrInvalidConfigPayload    = errors.New("invalid config payload")
+	ErrStateDirRequired        = errors.New("state dir is required")
+	ErrConfigArtifactWrite     = errors.New("config artifact write failed")
 )
 
 type Service struct {
@@ -114,7 +118,6 @@ func (s *Service) ValidateAndStoreConfigRevision(revision ConfigRevision) error 
 		return err
 	}
 	s.configRevisions[revision.RevisionNumber] = revision
-	s.status.ActiveRevision = revision.RevisionNumber
 	s.status.LastRollbackRevision = revision.RollbackTargetRevision
 	return nil
 }
@@ -124,6 +127,20 @@ func (s *Service) ApplyConfigRevisionMetadata(revision ConfigRevision) error {
 		return err
 	}
 	s.TrackAppliedRevision(revision)
+	return nil
+}
+
+func (s *Service) ApplyConfigRevision(revision ConfigRevision) error {
+	if err := s.ValidateAndStoreConfigRevision(revision); err != nil {
+		return err
+	}
+	artifact, err := s.SerializeConfigRevision(revision)
+	if err != nil {
+		return err
+	}
+	s.TrackAppliedRevision(revision)
+	s.status.ConfigArtifactPath = artifact.ConfigPath
+	s.status.MetadataArtifactPath = artifact.MetadataPath
 	return nil
 }
 
@@ -174,7 +191,7 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 	if reportTime.IsZero() {
 		reportTime = time.Now().UTC()
 	}
-	if err := s.ApplyConfigRevisionMetadata(revision); err != nil {
+	if err := s.ApplyConfigRevision(revision); err != nil {
 		reportErr := client.ReportConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken, revision.ID, ConfigRevisionReport{
 			Status:       "failed",
 			FailedAt:     reportTime,
@@ -196,6 +213,99 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 		return false, err
 	}
 	return true, nil
+}
+
+type ConfigArtifact struct {
+	ConfigPath   string
+	MetadataPath string
+}
+
+func (s *Service) SerializeConfigRevision(revision ConfigRevision) (ConfigArtifact, error) {
+	stateDir := strings.TrimSpace(s.identity.StateDir)
+	if stateDir == "" {
+		return ConfigArtifact{}, ErrStateDirRequired
+	}
+
+	config, ok := revision.Bundle["config"].(map[string]any)
+	if !ok {
+		return ConfigArtifact{}, ErrInvalidConfigPayload
+	}
+
+	revisionDir := filepath.Join(stateDir, "revisions", fmt.Sprintf("%d", revision.RevisionNumber))
+	activeDir := filepath.Join(stateDir, "active")
+	if err := os.MkdirAll(revisionDir, 0o700); err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+
+	configBody, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return ConfigArtifact{}, err
+	}
+	configBody = append(configBody, '\n')
+
+	configPath := filepath.Join(revisionDir, "config.json")
+	metadataPath := filepath.Join(revisionDir, "metadata.json")
+	activeConfigPath := filepath.Join(activeDir, "config.json")
+	activeMetadataPath := filepath.Join(activeDir, "metadata.json")
+
+	metadata := map[string]any{
+		"revision_id":              revision.ID,
+		"node_id":                  revision.NodeID,
+		"revision_number":          revision.RevisionNumber,
+		"bundle_hash":              revision.BundleHash,
+		"signer":                   revision.Signer,
+		"rollback_target_revision": revision.RollbackTargetRevision,
+		"config_path":              configPath,
+		"active_config_path":       activeConfigPath,
+		"apply_mode":               "serialized-config-only",
+	}
+	metadataBody, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return ConfigArtifact{}, err
+	}
+	metadataBody = append(metadataBody, '\n')
+
+	for _, write := range []struct {
+		path string
+		body []byte
+	}{
+		{path: configPath, body: configBody},
+		{path: metadataPath, body: metadataBody},
+		{path: activeConfigPath, body: configBody},
+		{path: activeMetadataPath, body: metadataBody},
+	} {
+		if err := writeFileAtomic(write.path, write.body, 0o600); err != nil {
+			return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+		}
+	}
+
+	return ConfigArtifact{ConfigPath: activeConfigPath, MetadataPath: activeMetadataPath}, nil
+}
+
+func writeFileAtomic(path string, body []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	temp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tempName := temp.Name()
+	defer os.Remove(tempName)
+
+	if _, err := temp.Write(body); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Chmod(perm); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempName, path)
 }
 
 func (s *Service) ConfigRevision(revisionNumber int) (ConfigRevision, bool) {
@@ -273,6 +383,12 @@ func validateRenderedConfigPayload(revision ConfigRevision) error {
 	if !ok {
 		return ErrInvalidConfigPayload
 	}
+	if _, ok := revision.Bundle["subscription_inputs"].([]any); !ok {
+		return ErrInvalidConfigPayload
+	}
+	if _, ok := revision.Bundle["access_entries"].([]any); !ok {
+		return ErrInvalidConfigPayload
+	}
 	if _, ok := config["inbounds"].([]any); !ok {
 		return ErrInvalidConfigPayload
 	}
@@ -311,6 +427,10 @@ func configRevisionErrorMessage(err error) string {
 		return "invalid config payload"
 	case errors.Is(err, ErrInvalidConfigRevision):
 		return "invalid config revision"
+	case errors.Is(err, ErrStateDirRequired):
+		return "state dir is required"
+	case errors.Is(err, ErrConfigArtifactWrite):
+		return "config artifact write failed"
 	default:
 		return "config revision apply failed"
 	}

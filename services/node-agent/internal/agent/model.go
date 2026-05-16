@@ -16,6 +16,7 @@ type Identity struct {
 	BootstrapToken string `json:"-"`
 	NodeToken      string `json:"-"`
 	PanelURL       string `json:"panel_url,omitempty"`
+	StateDir       string `json:"-"`
 }
 
 type Status struct {
@@ -27,6 +28,8 @@ type Status struct {
 	ActiveRevision       int       `json:"active_revision"`
 	LastAppliedRevision  int       `json:"last_applied_revision"`
 	LastRollbackRevision int       `json:"last_rollback_revision"`
+	ConfigArtifactPath   string    `json:"config_artifact_path,omitempty"`
+	MetadataArtifactPath string    `json:"metadata_artifact_path,omitempty"`
 }
 
 type RegistrationPayload struct {

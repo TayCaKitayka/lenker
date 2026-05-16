@@ -23,7 +23,7 @@ Current foundation:
 - local `GET /status`
 - agent identity, registration payload, heartbeat payload, status, config revision, and rollback placeholder models
 - registration and heartbeat request builders
-- signed config revision metadata validation with in-memory storage
+- signed config revision validation with in-memory metadata storage and local config artifact serialization
 - config revision tracking and rollback planning skeleton
 
 Configuration:
@@ -108,14 +108,28 @@ The agent has a small panel client for fetching the latest pending signed
 revision metadata with `Authorization: Bearer <node_token>`. A polling loop runs
 on `LENKER_AGENT_CONFIG_POLL_INTERVAL`, treats `404 not_found` as no-op, rejects
 unauthorized or malformed responses, validates the bundle hash and deterministic
-dev signature, verifies the deterministic VLESS Reality Xray config skeleton
-payload shape, stores metadata in memory, and updates the active/applied
-revision in status and heartbeat payloads.
+dev signature, verifies the deterministic subscription-aware VLESS Reality Xray
+config skeleton payload shape, stores metadata in memory, serializes local
+config artifacts, and updates the active/applied revision in status and
+heartbeat payloads after serialization succeeds.
 
 After validation, the agent reports `applied` to panel-api. Validation failures
-such as bad hash, bad signature, or malformed payload are reported as `failed`
-with a concise `error_message`. This apply step is metadata-only and does not
-touch the filesystem, Xray config files, OS processes, or rollback execution.
+such as bad hash, bad signature, malformed payload, or local artifact write
+failure are reported as `failed` with a concise `error_message`.
+
+Local artifact layout under `LENKER_AGENT_STATE_DIR`:
+
+```text
+revisions/<revision_number>/config.json
+revisions/<revision_number>/metadata.json
+active/config.json
+active/metadata.json
+```
+
+Writes use a temp-file then rename pattern. `metadata.json` includes the
+revision id, bundle hash, signer, rollback target revision, and config path
+references. This apply step prepares local files only; it does not start,
+restart, reload, or supervise Xray, and it does not execute rollback.
 
 Not included here yet:
 
@@ -123,7 +137,7 @@ Not included here yet:
 - VPN configuration generation
 - process supervision implementation
 - real Xray process control
-- real config apply executor
+- real config apply executor beyond local serialization
 - real rollback engine
 - full mTLS or certificate rotation
 - support for protocols beyond the main MVP path

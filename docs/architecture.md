@@ -156,14 +156,19 @@ marks tokens used after successful registration. Full mTLS establishment,
 certificate rotation, Xray process control, and rollback execution are still
 skeleton work.
 
-The config delivery foundation creates deterministic signed VLESS Reality Xray
-config skeleton payloads for the single MVP path. A node-facing endpoint lets
-the node-agent fetch the latest pending signed revision with the node Bearer
-token. The node-agent polling loop fetches pending revisions, verifies
-hash/signature and payload shape, stores metadata in memory, and reports
-`applied` or `failed` status back to the panel. This remains a skeleton apply
-path: no runtime config files are written, no Xray process is controlled, and
-no rollback executor is implemented by this layer.
+The config delivery foundation creates deterministic signed subscription-aware
+VLESS Reality Xray config skeleton payloads for the single MVP path. The
+renderer derives simple `subscription_inputs` and `access_entries` from active
+subscriptions, active users, plans, and the target node region without adding a
+production allocation engine. A node-facing endpoint lets the node-agent fetch
+the latest pending signed revision with the node Bearer token.
+
+The node-agent polling loop fetches pending revisions, verifies hash/signature
+and payload shape, serializes the rendered config object to local state
+artifacts, stores metadata in memory, and reports `applied` or `failed` status
+back to the panel. Rollback is still planning/status metadata only through
+`rollback_target_revision`; no Xray process is controlled and no rollback
+executor is implemented by this layer.
 
 ### Boundary 3: User App to Panel
 

@@ -277,10 +277,12 @@ Generate and deploy the next signed config revision.
 Current implementation note:
 
 The implemented foundation uses `POST /nodes/{nodeId}/config-revisions` to
-create deterministic signed VLESS Reality Xray config skeleton payloads for the
-single MVP path. It stores revision number, status, bundle hash, signature,
-signer, rollback target metadata, and timestamps. It does not write runtime
-Xray config files, restart processes, or execute rollback.
+create deterministic signed subscription-aware VLESS Reality Xray config
+skeleton payloads for the single MVP path. It derives `subscription_inputs` and
+`access_entries` from active subscriptions, active users, plans, and target node
+region. It stores revision number, status, bundle hash, signature, signer,
+rollback target metadata, and timestamps. It does not restart processes or
+execute rollback.
 
 #### `GET /nodes/{nodeId}/config-revisions`
 
@@ -301,7 +303,8 @@ This node-facing endpoint requires `Authorization: Bearer <node_token>`, checks
 that the token belongs to the node in the path, and returns only the latest
 pending signed config skeleton payload metadata for that node. If the node is
 unknown, the token does not match, the node is disabled, or no pending revision
-exists, it returns `not_found`.
+exists, it returns `not_found`. The node-agent validates the payload and
+serializes local config artifacts before reporting `applied`.
 
 #### `POST /nodes/{nodeId}/config-revisions/{revisionId}/report`
 
@@ -315,6 +318,11 @@ only its own revision as `applied` or `failed`. Applied reports set the revision
 `applied_at` timestamp and update the node active revision. Failed reports set
 `failed_at` and persist a concise `error_message`. It does not execute
 rollback, restart processes, or control Xray.
+
+Rollback planning is metadata-only here. New revisions carry
+`rollback_target_revision`, usually the node's previously active revision, so a
+future executor can choose a rollback target without this endpoint performing
+rollback.
 
 #### `POST /nodes/{nodeId}/rollback`
 

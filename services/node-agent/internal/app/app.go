@@ -24,6 +24,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		BootstrapToken: cfg.BootstrapToken,
 		NodeToken:      cfg.NodeToken,
 		PanelURL:       cfg.PanelURL,
+		StateDir:       cfg.StateDir,
 	})
 	panelClient := agent.PanelClient{BaseURL: cfg.PanelURL}
 

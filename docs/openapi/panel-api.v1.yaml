@@ -467,7 +467,7 @@ paths:
     get:
       tags: [Nodes]
       summary: List node config revisions
-      description: Returns signed deterministic config payload metadata. This foundation does not control the Xray runtime.
+      description: Returns signed deterministic subscription-aware config payload metadata. This foundation does not control the Xray runtime.
       responses:
         "200":
           description: Config revisions list.
@@ -484,7 +484,7 @@ paths:
     post:
       tags: [Nodes]
       summary: Create signed config revision metadata
-      description: Creates metadata for a deterministic VLESS Reality Xray config skeleton payload. It does not apply config, restart processes, or execute rollback.
+      description: Creates metadata for a deterministic subscription-aware VLESS Reality Xray config skeleton payload. It does not restart processes or execute rollback.
       responses:
         "201":
           description: Config revision metadata created.
@@ -506,7 +506,7 @@ paths:
     get:
       tags: [Nodes]
       summary: Fetch latest pending config revision metadata for a node
-      description: Node-agent endpoint. Requires the node Bearer token and returns only the latest pending signed config payload metadata for the node in the path. It does not apply config or control Xray.
+      description: Node-agent endpoint. Requires the node Bearer token and returns only the latest pending signed config payload metadata for the node in the path. The agent serializes local artifacts before reporting applied; this endpoint does not control Xray.
       responses:
         "200":
           description: Latest pending config revision metadata.
@@ -1214,7 +1214,7 @@ components:
           minimum: 0
         bundle:
           type: object
-          description: Deterministic VLESS Reality Xray config skeleton payload. It is not applied to a real Xray process by this foundation.
+          description: Deterministic subscription-aware VLESS Reality Xray config skeleton payload with node metadata, subscription_inputs, access_entries, and rendered config object. It is not applied to a real Xray process by this foundation.
         created_at:
           type: string
           format: date-time

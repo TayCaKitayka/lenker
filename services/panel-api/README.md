@@ -30,7 +30,7 @@ Current foundation:
 - admin-created one-time node bootstrap tokens
 - node registration with token expiry and one-time token consumption
 - node heartbeat status and `last_seen_at` updates
-- config revision metadata storage with deterministic signed VLESS Reality Xray config skeleton payloads
+- config revision metadata storage with deterministic signed subscription-aware VLESS Reality Xray config skeleton payloads
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -335,11 +335,17 @@ Conservative lifecycle behavior:
 
 ## Config Revision Metadata
 
-The config foundation creates deterministic VLESS Reality Xray config skeleton
-payloads for the single MVP protocol path and records revision number, status,
-bundle hash, signature, signer, rollback target metadata, and timestamps. This
-payload is structured and hash/signature stable, but it is not written to an
-Xray config file and does not restart or control Xray.
+The config foundation creates deterministic subscription-aware VLESS Reality
+Xray config skeleton payloads for the single MVP protocol path and records
+revision number, status, bundle hash, signature, signer, rollback target
+metadata, and timestamps. The renderer uses real active users, plans, and
+subscriptions as `subscription_inputs` and turns eligible subscriptions into
+deterministic `access_entries`. Eligibility is intentionally simple for this
+stage: active subscriptions for active users whose preferred region is empty or
+matches the target node region.
+
+The payload is structured and hash/signature stable. The panel still does not
+write runtime Xray config files, restart or control Xray, or execute rollback.
 
 Create a config revision metadata record:
 
@@ -394,6 +400,11 @@ curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<r
 Applied reports update revision status and node `active_revision`. Failed
 reports persist `failed_at` and `error_message`. The report path does not
 execute rollback, restart processes, or control Xray.
+
+Rollback planning is metadata-only at this stage. New revisions keep
+`rollback_target_revision` pointed at the node's current `active_revision`, and
+previous applied revisions remain queryable through the config revision list and
+detail endpoints. There is no rollback executor yet.
 
 Manual smoke checklist:
 

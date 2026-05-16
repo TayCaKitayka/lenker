@@ -9,6 +9,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -83,8 +85,8 @@ func TestValidateAndStoreConfigRevision(t *testing.T) {
 		t.Fatalf("unexpected stored revision: %#v", stored)
 	}
 	status := service.Status()
-	if status.ActiveRevision != 2 || status.LastRollbackRevision != 1 {
-		t.Fatalf("expected active and rollback metadata to be tracked, got %#v", status)
+	if status.ActiveRevision != 0 || status.LastRollbackRevision != 1 {
+		t.Fatalf("expected validation to track rollback metadata without advancing active revision, got %#v", status)
 	}
 }
 
@@ -322,7 +324,7 @@ func TestPollPendingConfigRevisionNoPendingDoesNotReport(t *testing.T) {
 func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
 	revision := signedTestConfigRevision(t, "node-1", 4, 3)
 	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
-	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: t.TempDir()})
 	now := time.Date(2026, 5, 16, 1, 2, 3, 0, time.UTC)
 
 	applied, err := service.PollPendingConfigRevision(context.Background(), client, now)
@@ -338,13 +340,19 @@ func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
 	if service.Status().ActiveRevision != 4 || service.Status().LastAppliedRevision != 4 {
 		t.Fatalf("expected active revision in status: %#v", service.Status())
 	}
+	if service.Status().ConfigArtifactPath == "" {
+		t.Fatalf("expected config artifact path in status")
+	}
+	if _, err := os.Stat(service.Status().ConfigArtifactPath); err != nil {
+		t.Fatalf("expected config artifact: %v", err)
+	}
 }
 
 func TestPollPendingConfigRevisionReportsFailedForTamperedRevision(t *testing.T) {
 	revision := signedTestConfigRevision(t, "node-1", 4, 3)
 	revision.Bundle["protocol"] = "tampered"
 	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
-	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: t.TempDir()})
 
 	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
 	if !errors.Is(err, ErrInvalidConfigBundleHash) {
@@ -361,11 +369,66 @@ func TestPollPendingConfigRevisionReportsFailedForTamperedRevision(t *testing.T)
 func TestPollPendingConfigRevisionReportFailureHandled(t *testing.T) {
 	revision := signedTestConfigRevision(t, "node-1", 4, 3)
 	client := &fakePendingConfigRevisionClient{revision: revision, ok: true, reportErr: ErrUnexpectedPanelResponse}
-	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: t.TempDir()})
 
 	_, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
 	if !errors.Is(err, ErrUnexpectedPanelResponse) {
 		t.Fatalf("expected report failure, got %v", err)
+	}
+}
+
+func TestPollPendingConfigRevisionWriteFailureReportsFailed(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	stateFile := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(stateFile, []byte("file"), 0o600); err != nil {
+		t.Fatalf("expected state file fixture: %v", err)
+	}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: stateFile})
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if !errors.Is(err, ErrConfigArtifactWrite) {
+		t.Fatalf("expected artifact write error, got %v", err)
+	}
+	if applied {
+		t.Fatalf("write failure must not apply revision")
+	}
+	if service.Status().ActiveRevision != 0 || service.Status().LastAppliedRevision != 0 {
+		t.Fatalf("write failure must not advance status: %#v", service.Status())
+	}
+	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != "config artifact write failed" {
+		t.Fatalf("expected failed report for write failure, got %#v", client.report)
+	}
+}
+
+func TestApplyConfigRevisionWritesLocalArtifacts(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	service := NewService(Identity{NodeID: "node-1", StateDir: t.TempDir()})
+
+	if err := service.ApplyConfigRevision(revision); err != nil {
+		t.Fatalf("expected local apply: %v", err)
+	}
+	status := service.Status()
+	if status.ActiveRevision != 4 || status.LastRollbackRevision != 3 {
+		t.Fatalf("expected status after local apply: %#v", status)
+	}
+	configBody, err := os.ReadFile(status.ConfigArtifactPath)
+	if err != nil {
+		t.Fatalf("expected active config artifact: %v", err)
+	}
+	if !json.Valid(configBody) {
+		t.Fatalf("expected valid config json: %s", string(configBody))
+	}
+	metadataBody, err := os.ReadFile(status.MetadataArtifactPath)
+	if err != nil {
+		t.Fatalf("expected active metadata artifact: %v", err)
+	}
+	if !json.Valid(metadataBody) {
+		t.Fatalf("expected valid metadata json: %s", string(metadataBody))
+	}
+	revisionConfigPath := filepath.Join(filepath.Dir(filepath.Dir(status.ConfigArtifactPath)), "revisions", "4", "config.json")
+	if _, err := os.Stat(revisionConfigPath); err != nil {
+		t.Fatalf("expected revision config artifact: %v", err)
 	}
 }
 
@@ -402,6 +465,23 @@ func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, r
 			"inbounds":  []any{},
 			"outbounds": []any{},
 			"routing":   map[string]any{},
+		},
+		"subscription_inputs": []any{
+			map[string]any{
+				"subscription_id":     "00000000-0000-0000-0000-000000000004",
+				"user_id":             "00000000-0000-0000-0000-000000000001",
+				"plan_id":             "00000000-0000-0000-0000-000000000002",
+				"subscription_status": "active",
+				"user_status":         "active",
+				"preferred_region":    "eu",
+				"device_limit":        2,
+			},
+		},
+		"access_entries": []any{
+			map[string]any{
+				"subscription_id": "00000000-0000-0000-0000-000000000004",
+				"vless_client_id": "00000000-0000-0000-0000-000000000004",
+			},
 		},
 		"config_text": "lenker xray vless reality skeleton",
 	}

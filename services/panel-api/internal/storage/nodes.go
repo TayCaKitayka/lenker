@@ -493,13 +493,19 @@ func (r *nodesRepository) CreateDummyConfigRevision(ctx context.Context, input C
 	if err != nil {
 		return ConfigRevision{}, err
 	}
+	subscriptionInputs, err := listConfigSubscriptionInputs(ctx, tx, region)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
 
 	payload := configrender.RenderVLESSRealityPayload(configrender.RenderInput{
-		NodeID:         input.NodeID,
-		RevisionNumber: nextRevision,
-		Hostname:       hostname,
-		Region:         region,
-		CountryCode:    countryCode,
+		NodeID:                 input.NodeID,
+		RevisionNumber:         nextRevision,
+		Hostname:               hostname,
+		Region:                 region,
+		CountryCode:            countryCode,
+		RollbackTargetRevision: currentRevision,
+		SubscriptionInputs:     subscriptionInputs,
 	})
 	bundleHash, err := configbundle.HashPayload(payload)
 	if err != nil {
@@ -552,6 +558,68 @@ func (r *nodesRepository) CreateDummyConfigRevision(ctx context.Context, input C
 		return ConfigRevision{}, err
 	}
 	return revision, nil
+}
+
+func listConfigSubscriptionInputs(ctx context.Context, tx *sql.Tx, nodeRegion string) ([]configrender.SubscriptionInput, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT s.id::text,
+		       s.user_id::text,
+		       s.plan_id::text,
+		       u.status,
+		       s.status,
+		       COALESCE(s.preferred_region, ''),
+		       p.name,
+		       s.device_limit,
+		       s.traffic_limit_bytes,
+		       s.starts_at,
+		       s.expires_at
+		FROM subscriptions s
+		JOIN users u ON u.id = s.user_id
+		JOIN plans p ON p.id = s.plan_id
+		WHERE s.status = 'active'
+		  AND u.status = 'active'
+		  AND s.expires_at > now()
+		  AND (s.preferred_region IS NULL OR s.preferred_region = '' OR s.preferred_region = $1)
+		ORDER BY s.id::text ASC
+	`, nodeRegion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []configrender.SubscriptionInput
+	for rows.Next() {
+		var input configrender.SubscriptionInput
+		var trafficLimit sql.NullInt64
+		var startsAt time.Time
+		var expiresAt time.Time
+		if err := rows.Scan(
+			&input.SubscriptionID,
+			&input.UserID,
+			&input.PlanID,
+			&input.UserStatus,
+			&input.SubscriptionStatus,
+			&input.PreferredRegion,
+			&input.PlanName,
+			&input.DeviceLimit,
+			&trafficLimit,
+			&startsAt,
+			&expiresAt,
+		); err != nil {
+			return nil, err
+		}
+		if trafficLimit.Valid {
+			value := trafficLimit.Int64
+			input.TrafficLimitBytes = &value
+		}
+		input.StartsAt = startsAt.UTC().Format(time.RFC3339)
+		input.ExpiresAt = expiresAt.UTC().Format(time.RFC3339)
+		result = append(result, input)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (r *nodesRepository) ListConfigRevisions(ctx context.Context, nodeID string) ([]ConfigRevision, error) {

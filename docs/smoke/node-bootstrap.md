@@ -168,8 +168,12 @@ Expected result:
 - response contains `data.revision_number`;
 - response contains `data.bundle_hash`, `data.signature`, `data.signer`, and
   `data.bundle`;
-- `data.bundle` contains a deterministic VLESS Reality Xray config skeleton
-  payload for the single MVP path.
+- `data.bundle` contains a deterministic subscription-aware VLESS Reality Xray
+  config skeleton payload for the single MVP path;
+- `data.bundle.subscription_inputs` and `data.bundle.access_entries` are arrays,
+  empty if there are no active eligible subscriptions for this node region;
+- `data.rollback_target_revision` points at the node's active revision, or `0`
+  if none has been applied yet.
 
 Fetch the latest pending revision as the node-agent:
 
@@ -185,8 +189,9 @@ Expected result:
 - if no pending revision exists, the endpoint returns `not_found`.
 
 The node-agent unit tests verify that the fetched metadata can be hash/signature
-validated, checked for the expected config skeleton payload shape, stored in
-memory, and reflected in the heartbeat active revision payload.
+validated, checked for the expected config skeleton payload shape, serialized to
+local config artifacts, stored in memory, and reflected in the heartbeat active
+revision payload.
 
 Report the pending revision as applied:
 
@@ -215,7 +220,15 @@ curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisi
 ```
 
 This smoke path still does not write Xray config files, restart processes, or
-execute rollback.
+execute rollback from the panel. The node-agent serialization foundation writes
+local artifacts only under its state directory:
+
+```text
+revisions/<revision_number>/config.json
+revisions/<revision_number>/metadata.json
+active/config.json
+active/metadata.json
+```
 
 After metadata apply in the agent skeleton, heartbeat can report the applied
 revision number:
