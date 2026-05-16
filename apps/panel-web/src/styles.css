@@ -426,6 +426,14 @@ select {
   min-width: 1320px;
 }
 
+.revisions-table {
+  min-width: 1480px;
+}
+
+.revisions-table-wrap {
+  margin-top: 18px;
+}
+
 .data-table th,
 .data-table td {
   padding: 14px 16px;
@@ -547,6 +555,34 @@ select {
   padding: 10px;
   border-radius: 12px;
   background: #ffffff;
+}
+
+.revision-detail {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e5ebf4;
+}
+
+.json-block {
+  max-height: 360px;
+  margin: 18px 0 0;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid #dbe3ef;
+  border-radius: 16px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.state-card.compact {
+  margin: 0;
+  padding: 18px;
+  border-radius: 18px;
+  box-shadow: none;
 }
 
 @media (max-width: 920px) {

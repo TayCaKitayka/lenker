@@ -8,6 +8,7 @@ export interface NodeBootstrapFormState {
 
 export type NodeStatus = "pending" | "active" | "unhealthy" | "drained" | "disabled";
 export type NodeDrainState = "active" | "draining" | "drained";
+export type ConfigRevisionStatus = "pending" | "applied" | "failed" | "rolled_back";
 
 interface NodeLifecycleState {
   status: NodeStatus;
@@ -108,6 +109,35 @@ export function nodeStatusClass(status: NodeStatus): string {
 
 export function nodeDrainClass(drainState: NodeDrainState): string {
   return drainState === "active" ? "status-active" : "status-draining";
+}
+
+export function configRevisionStatusClass(status: ConfigRevisionStatus): string {
+  if (status === "applied") {
+    return "status-active";
+  }
+  if (status === "failed") {
+    return "status-disabled";
+  }
+  if (status === "rolled_back") {
+    return "status-archived";
+  }
+  return "status-pending";
+}
+
+export function formatConfigRevisionBundle(bundle: unknown): string {
+  if (bundle === null || bundle === undefined) {
+    return "-";
+  }
+
+  if (typeof bundle === "string") {
+    return bundle;
+  }
+
+  try {
+    return JSON.stringify(bundle, null, 2);
+  } catch {
+    return String(bundle);
+  }
 }
 
 function parsePositiveInteger(value: string): number | null {

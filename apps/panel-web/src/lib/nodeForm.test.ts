@@ -4,7 +4,9 @@ import {
   canDrain,
   canEnable,
   canUndrain,
+  configRevisionStatusClass,
   emptyNodeBootstrapForm,
+  formatConfigRevisionBundle,
   formatNodeTimestamp,
   validateNodeBootstrapForm,
 } from "./nodeForm";
@@ -20,6 +22,7 @@ function runTests(): void {
   buildsTrimmedBootstrapInput();
   formatsTimestampsSafely();
   checksLifecycleActions();
+  formatsConfigRevisionDisplay();
 }
 
 function validatesExpiry(): void {
@@ -61,6 +64,16 @@ function checksLifecycleActions(): void {
   assert(!canDisable({ status: "disabled" }), "expected disabled node not disableable");
   assert(canEnable({ status: "disabled" }), "expected disabled node enableable");
   assert(!canEnable({ status: "active" }), "expected active node not enableable");
+}
+
+function formatsConfigRevisionDisplay(): void {
+  assert(configRevisionStatusClass("applied") === "status-active", "expected applied status class");
+  assert(configRevisionStatusClass("failed") === "status-disabled", "expected failed status class");
+  assert(configRevisionStatusClass("rolled_back") === "status-archived", "expected rolled back status class");
+  assert(configRevisionStatusClass("pending") === "status-pending", "expected pending status class");
+  assert(formatConfigRevisionBundle(null) === "-", "expected empty bundle fallback");
+  assert(formatConfigRevisionBundle("raw") === "raw", "expected string bundle passthrough");
+  assert(formatConfigRevisionBundle({ revision_number: 2 }).includes('"revision_number": 2'), "expected JSON bundle formatting");
 }
 
 runTests();

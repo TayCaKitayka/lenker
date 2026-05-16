@@ -42,6 +42,14 @@ interface NodeBootstrapTokenResponse {
   data: NodeBootstrapToken;
 }
 
+interface ConfigRevisionListResponse {
+  data?: ConfigRevision[] | null;
+}
+
+interface ConfigRevisionResponse {
+  data: ConfigRevision;
+}
+
 interface ApiErrorResponse {
   error?: {
     code?: string;
@@ -124,6 +132,7 @@ export interface RenewSubscriptionInput {
 
 export type NodeStatus = "pending" | "active" | "unhealthy" | "drained" | "disabled";
 export type NodeDrainState = "active" | "draining" | "drained";
+export type ConfigRevisionStatus = "pending" | "applied" | "failed" | "rolled_back";
 
 export interface NodeSummary {
   id: string;
@@ -160,6 +169,23 @@ export interface NodeBootstrapToken {
   node_id: string;
   bootstrap_token: string;
   expires_at: string;
+}
+
+export interface ConfigRevision {
+  id: string;
+  node_id: string;
+  revision_number: number;
+  status: ConfigRevisionStatus;
+  bundle_hash: string;
+  signature: string;
+  signer: string;
+  rollback_target_revision: number;
+  bundle?: unknown;
+  created_at: string;
+  applied_at?: string | null;
+  failed_at?: string | null;
+  rolled_back_at?: string | null;
+  error_message?: string | null;
 }
 
 export class PanelApiError extends Error {
@@ -345,6 +371,31 @@ export async function disableNode(session: StoredSession, nodeID: string): Promi
 
 export async function enableNode(session: StoredSession, nodeID: string): Promise<Node> {
   return nodeLifecycleRequest(session, nodeID, "enable");
+}
+
+export async function listNodeConfigRevisions(session: StoredSession, nodeID: string): Promise<ConfigRevision[]> {
+  const payload = await authorizedRequest<ConfigRevisionListResponse>(
+    session,
+    `/api/v1/nodes/${encodeURIComponent(nodeID)}/config-revisions`,
+  );
+  return readListData(payload, "config revisions");
+}
+
+export async function getNodeConfigRevision(session: StoredSession, nodeID: string, revisionID: string): Promise<ConfigRevision> {
+  const payload = await authorizedRequest<ConfigRevisionResponse>(
+    session,
+    `/api/v1/nodes/${encodeURIComponent(nodeID)}/config-revisions/${encodeURIComponent(revisionID)}`,
+  );
+  return payload.data;
+}
+
+export async function createNodeConfigRevision(session: StoredSession, nodeID: string): Promise<ConfigRevision> {
+  const payload = await authorizedRequest<ConfigRevisionResponse>(
+    session,
+    `/api/v1/nodes/${encodeURIComponent(nodeID)}/config-revisions`,
+    { method: "POST" },
+  );
+  return payload.data;
 }
 
 interface AuthorizedRequestOptions {

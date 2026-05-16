@@ -1,13 +1,17 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  createNodeConfigRevision,
   createNodeBootstrapToken,
   disableNode,
   drainNode,
   enableNode,
   getNode,
+  getNodeConfigRevision,
+  listNodeConfigRevisions,
   listNodes,
   PanelApiError,
   undrainNode,
+  type ConfigRevision,
   type Node,
   type NodeBootstrapToken,
   type NodeSummary,
@@ -18,7 +22,9 @@ import {
   canDrain,
   canEnable,
   canUndrain,
+  configRevisionStatusClass,
   emptyNodeBootstrapForm,
+  formatConfigRevisionBundle,
   formatNodeTimestamp,
   nodeDrainClass,
   nodeStatusClass,
@@ -48,9 +54,70 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
   const [isCreatingToken, setIsCreatingToken] = useState(false);
   const [mutatingAction, setMutatingAction] = useState<NodeAction | null>(null);
   const [mutatingNodeID, setMutatingNodeID] = useState<string | null>(null);
+  const [configRevisions, setConfigRevisions] = useState<ConfigRevision[]>([]);
+  const [selectedRevisionID, setSelectedRevisionID] = useState<string | null>(null);
+  const [selectedRevision, setSelectedRevision] = useState<ConfigRevision | null>(null);
+  const [revisionsLoadState, setRevisionsLoadState] = useState<LoadState>("idle");
+  const [revisionDetailLoadState, setRevisionDetailLoadState] = useState<LoadState>("idle");
+  const [revisionErrorMessage, setRevisionErrorMessage] = useState<string | null>(null);
+  const [isCreatingRevision, setIsCreatingRevision] = useState(false);
 
   const activeNodes = useMemo(() => nodes.filter((node) => node.status === "active").length, [nodes]);
   const drainingNodes = useMemo(() => nodes.filter((node) => node.drain_state === "draining").length, [nodes]);
+
+  const loadRevisionDetail = useCallback(
+    async (nodeID: string, revisionID: string) => {
+      setRevisionDetailLoadState("loading");
+      setRevisionErrorMessage(null);
+
+      try {
+        const revision = await getNodeConfigRevision(session, nodeID, revisionID);
+        setSelectedRevision(revision);
+        setSelectedRevisionID(revision.id);
+        setRevisionDetailLoadState("loaded");
+      } catch (error) {
+        if (handleUnauthorizedError(error, onUnauthorized)) {
+          return;
+        }
+        setSelectedRevision(null);
+        setRevisionErrorMessage(formatPanelError(error, "Unable to load config revision details."));
+        setRevisionDetailLoadState("failed");
+      }
+    },
+    [onUnauthorized, session],
+  );
+
+  const loadConfigRevisions = useCallback(
+    async (nodeID: string, preferredRevisionID?: string | null) => {
+      setRevisionsLoadState("loading");
+      setRevisionErrorMessage(null);
+
+      try {
+        const revisions = await listNodeConfigRevisions(session, nodeID);
+        setConfigRevisions(revisions);
+        setRevisionsLoadState("loaded");
+
+        const nextRevisionID = preferredRevisionID ?? revisions[0]?.id ?? null;
+        setSelectedRevisionID(nextRevisionID);
+        if (nextRevisionID) {
+          await loadRevisionDetail(nodeID, nextRevisionID);
+        } else {
+          setSelectedRevision(null);
+          setRevisionDetailLoadState("idle");
+        }
+      } catch (error) {
+        if (handleUnauthorizedError(error, onUnauthorized)) {
+          return;
+        }
+        setConfigRevisions([]);
+        setSelectedRevision(null);
+        setSelectedRevisionID(null);
+        setRevisionErrorMessage(formatPanelError(error, "Unable to load config revisions."));
+        setRevisionsLoadState("failed");
+      }
+    },
+    [loadRevisionDetail, onUnauthorized, session],
+  );
 
   const loadNodeDetail = useCallback(
     async (nodeID: string) => {
@@ -61,16 +128,21 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
         const loadedNode = await getNode(session, nodeID);
         setSelectedNode(loadedNode);
         setDetailLoadState("loaded");
+        await loadConfigRevisions(loadedNode.id);
       } catch (error) {
         if (handleUnauthorizedError(error, onUnauthorized)) {
           return;
         }
         setSelectedNode(null);
+        setConfigRevisions([]);
+        setSelectedRevision(null);
+        setSelectedRevisionID(null);
+        setRevisionsLoadState("idle");
         setErrorMessage(formatPanelError(error, "Unable to load node details."));
         setDetailLoadState("failed");
       }
     },
-    [onUnauthorized, session],
+    [loadConfigRevisions, onUnauthorized, session],
   );
 
   const loadNodes = useCallback(
@@ -91,7 +163,11 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
           await loadNodeDetail(nextSelectedNodeID);
         } else {
           setSelectedNode(null);
+          setConfigRevisions([]);
+          setSelectedRevision(null);
+          setSelectedRevisionID(null);
           setDetailLoadState("idle");
+          setRevisionsLoadState("idle");
         }
       } catch (error) {
         if (handleUnauthorizedError(error, onUnauthorized)) {
@@ -153,7 +229,19 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
     setSelectedNodeID(nodeID);
     setSuccessMessage(null);
     setBootstrapToken(null);
+    setSelectedRevision(null);
+    setSelectedRevisionID(null);
     await loadNodeDetail(nodeID);
+  }
+
+  async function selectRevision(revisionID: string) {
+    if (!selectedNodeID) {
+      return;
+    }
+
+    setSuccessMessage(null);
+    setSelectedRevisionID(revisionID);
+    await loadRevisionDetail(selectedNodeID, revisionID);
   }
 
   async function submitBootstrapTokenForm(event: FormEvent<HTMLFormElement>) {
@@ -217,6 +305,30 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
     } finally {
       setMutatingNodeID(null);
       setMutatingAction(null);
+    }
+  }
+
+  async function createDummyRevision() {
+    if (!selectedNodeID) {
+      return;
+    }
+
+    setIsCreatingRevision(true);
+    setRevisionErrorMessage(null);
+    setSuccessMessage(null);
+    setBootstrapToken(null);
+
+    try {
+      const revision = await createNodeConfigRevision(session, selectedNodeID);
+      setSuccessMessage(`Config revision #${revision.revision_number} metadata created.`);
+      await loadNodes(selectedNodeID);
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setRevisionErrorMessage(formatPanelError(error, "Unable to create config revision metadata."));
+    } finally {
+      setIsCreatingRevision(false);
     }
   }
 
@@ -430,6 +542,114 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
             <DetailItem label="Registered" value={formatNodeTimestamp(selectedNode.registered_at)} />
             <DetailItem label="Updated" value={formatNodeTimestamp(selectedNode.updated_at)} />
           </dl>
+        </section>
+      ) : null}
+
+      {selectedNode ? (
+        <section className="surface-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Config revisions</p>
+              <h3>Revision metadata</h3>
+            </div>
+            <div className="row-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => loadConfigRevisions(selectedNode.id)}
+                disabled={revisionsLoadState === "loading"}
+              >
+                {revisionsLoadState === "loading" ? "Refreshing..." : "Refresh"}
+              </button>
+              <button className="table-button" type="button" onClick={createDummyRevision} disabled={isCreatingRevision}>
+                {isCreatingRevision ? "Creating..." : "Create dummy revision"}
+              </button>
+            </div>
+          </div>
+
+          {revisionsLoadState === "loading" ? <p className="state-text">Loading config revisions...</p> : null}
+          {revisionErrorMessage ? <p className="error-text">{revisionErrorMessage}</p> : null}
+          {revisionsLoadState === "loaded" && configRevisions.length === 0 ? (
+            <p className="state-card compact">No config revisions for this node.</p>
+          ) : null}
+
+          {configRevisions.length > 0 ? (
+            <div className="table-wrap revisions-table-wrap">
+              <table className="data-table revisions-table">
+                <thead>
+                  <tr>
+                    <th>Revision</th>
+                    <th>Status</th>
+                    <th>Bundle hash</th>
+                    <th>Signer</th>
+                    <th>Rollback target</th>
+                    <th>Created</th>
+                    <th>Applied</th>
+                    <th>Failed</th>
+                    <th>Rolled back</th>
+                    <th>Error</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {configRevisions.map((revision) => (
+                    <tr key={revision.id} className={revision.id === selectedRevisionID ? "selected-row" : undefined}>
+                      <td>#{revision.revision_number}</td>
+                      <td>
+                        <span className={`status-badge ${configRevisionStatusClass(revision.status)}`}>{revision.status}</span>
+                      </td>
+                      <td className="mono-cell">{revision.bundle_hash || "-"}</td>
+                      <td>{revision.signer || "-"}</td>
+                      <td>{revision.rollback_target_revision}</td>
+                      <td>{formatNodeTimestamp(revision.created_at)}</td>
+                      <td>{formatNodeTimestamp(revision.applied_at)}</td>
+                      <td>{formatNodeTimestamp(revision.failed_at)}</td>
+                      <td>{formatNodeTimestamp(revision.rolled_back_at)}</td>
+                      <td>{revision.error_message || "-"}</td>
+                      <td>
+                        <button
+                          className="table-button"
+                          type="button"
+                          onClick={() => selectRevision(revision.id)}
+                          disabled={revisionDetailLoadState === "loading"}
+                        >
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {selectedRevision ? (
+            <div className="revision-detail">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Revision detail</p>
+                  <h3>#{selectedRevision.revision_number}</h3>
+                </div>
+              </div>
+
+              <dl className="node-detail-grid">
+                <DetailItem label="ID" value={selectedRevision.id} mono />
+                <DetailItem label="Node ID" value={selectedRevision.node_id} mono />
+                <DetailItem label="Status" value={selectedRevision.status} />
+                <DetailItem label="Signer" value={selectedRevision.signer} />
+                <DetailItem label="Bundle hash" value={selectedRevision.bundle_hash} mono />
+                <DetailItem label="Signature" value={selectedRevision.signature} mono />
+                <DetailItem label="Rollback target" value={String(selectedRevision.rollback_target_revision)} />
+                <DetailItem label="Created" value={formatNodeTimestamp(selectedRevision.created_at)} />
+                <DetailItem label="Applied" value={formatNodeTimestamp(selectedRevision.applied_at)} />
+                <DetailItem label="Failed" value={formatNodeTimestamp(selectedRevision.failed_at)} />
+                <DetailItem label="Rolled back" value={formatNodeTimestamp(selectedRevision.rolled_back_at)} />
+                <DetailItem label="Error" value={selectedRevision.error_message} />
+              </dl>
+
+              <pre className="json-block">{formatConfigRevisionBundle(selectedRevision.bundle)}</pre>
+            </div>
+          ) : null}
         </section>
       ) : null}
     </div>
