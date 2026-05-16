@@ -26,7 +26,7 @@ func TestRenderVLESSRealityPayloadDeterministic(t *testing.T) {
 		t.Fatalf("expected deterministic render:\n%s\n---\n%s", firstJSON, secondJSON)
 	}
 
-	expected := `{"access_entries":[],"config":{"inbounds":[{"listen":"0.0.0.0","port":443,"protocol":"vless","settings":{"clients":[],"decryption":"none"},"sniffing":{"destOverride":["http","tls","quic"],"enabled":true},"streamSettings":{"network":"tcp","realitySettings":{"dest":"www.cloudflare.com:443","privateKey":"lenker-placeholder-reality-private-key","serverNames":["www.cloudflare.com"],"shortIds":["lenker00"],"show":false},"security":"reality"},"tag":"vless-reality-in"}],"log":{"loglevel":"warning"},"outbounds":[{"protocol":"freedom","tag":"direct"}],"routing":{"domainStrategy":"AsIs","rules":[{"inboundTag":["vless-reality-in"],"outboundTag":"direct","type":"field"}]}},"config_kind":"xray-config-skeleton","config_text":"lenker xray vless reality skeleton node=node-1 revision=7 protocol=vless-reality-xtls-vision subscriptions=0","core_type":"xray","generated_by":"panel-api","node":{"country_code":"FI","hostname":"node-1.example.com","id":"node-1","region":"eu"},"protocol":"vless-reality-xtls-vision","revision_number":7,"rollback_target_revision":6,"schema_version":"config-bundle.v1alpha1","subscription_inputs":[],"transport":{"network":"tcp","security":"reality","xtls":"vision"}}`
+	expected := `{"access_entries":[],"config":{"inbounds":[{"listen":"0.0.0.0","port":443,"protocol":"vless","settings":{"clients":[],"decryption":"none","fallbacks":[]},"sniffing":{"destOverride":["http","tls","quic"],"enabled":true},"streamSettings":{"network":"tcp","realitySettings":{"dest":"www.cloudflare.com:443","maxClientVer":"","maxTimeDiff":0,"minClientVer":"","privateKey":"lenker-placeholder-reality-private-key","serverNames":["www.cloudflare.com"],"shortIds":["lenker00"],"show":false,"xver":0},"security":"reality"},"tag":"vless-reality-in"}],"log":{"loglevel":"warning"},"outbounds":[{"protocol":"freedom","tag":"direct"}],"policy":{"levels":{"0":{"connIdle":300,"downlinkOnly":5,"handshake":4,"statsUserDownlink":true,"statsUserUplink":true,"uplinkOnly":2}},"system":{"statsInboundDownlink":true,"statsInboundUplink":true,"statsOutboundDownlink":true,"statsOutboundUplink":true}},"routing":{"domainStrategy":"AsIs","rules":[{"inboundTag":["vless-reality-in"],"outboundTag":"direct","type":"field"}]},"stats":{}},"config_kind":"xray-config-compatible-skeleton","config_text":"lenker xray vless reality skeleton node=node-1 revision=7 protocol=vless-reality-xtls-vision subscriptions=0","core_type":"xray","generated_by":"panel-api","node":{"country_code":"FI","hostname":"node-1.example.com","id":"node-1","region":"eu"},"operation_kind":"deploy","protocol":"vless-reality-xtls-vision","revision_number":7,"rollback_target_revision":6,"schema_version":"config-bundle.v1alpha1","subscription_inputs":[],"transport":{"network":"tcp","security":"reality","xtls":"vision"}}`
 	if firstJSON != expected {
 		t.Fatalf("unexpected render:\n%s", firstJSON)
 	}
@@ -76,8 +76,34 @@ func TestRenderVLESSRealityPayloadOrdersSubscriptionInputs(t *testing.T) {
 		t.Fatalf("expected two rendered clients, got %#v", clients)
 	}
 	firstClient := clients[0].(map[string]any)
-	if firstClient["id"] != "sub-a" || firstClient["flow"] != "xtls-rprx-vision" {
+	if firstClient["id"] != "sub-a" || firstClient["flow"] != "xtls-rprx-vision" || firstClient["level"] != 0 {
 		t.Fatalf("unexpected first client: %#v", firstClient)
+	}
+}
+
+func TestRenderRollbackPayloadPreservesTargetConfig(t *testing.T) {
+	target := RenderVLESSRealityPayload(RenderInput{NodeID: "node-1", RevisionNumber: 3, RollbackTargetRevision: 2})
+	rollback, err := RenderRollbackPayload(target, RollbackInput{
+		RevisionNumber:         5,
+		RollbackTargetRevision: 4,
+		SourceRevisionID:       "revision-3",
+		SourceRevisionNumber:   3,
+	})
+	if err != nil {
+		t.Fatalf("expected rollback payload: %v", err)
+	}
+
+	if rollback["operation_kind"] != OperationRollback {
+		t.Fatalf("expected rollback operation kind, got %#v", rollback["operation_kind"])
+	}
+	if rollback["revision_number"] != 5 || rollback["rollback_target_revision"] != 4 {
+		t.Fatalf("unexpected rollback revision metadata: %#v", rollback)
+	}
+	if rollback["source_revision_id"] != "revision-3" || rollback["source_revision_number"] != 3 {
+		t.Fatalf("unexpected source revision metadata: %#v", rollback)
+	}
+	if mustJSON(t, rollback["config"]) != mustJSON(t, target["config"]) {
+		t.Fatalf("rollback config must preserve target config")
 	}
 }
 

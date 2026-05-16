@@ -110,8 +110,9 @@ on `LENKER_AGENT_CONFIG_POLL_INTERVAL`, treats `404 not_found` as no-op, rejects
 unauthorized or malformed responses, validates the bundle hash and deterministic
 dev signature, verifies the deterministic subscription-aware VLESS Reality Xray
 config skeleton payload shape, stores metadata in memory, serializes local
-config artifacts, and updates the active/applied revision in status and
-heartbeat payloads after serialization succeeds.
+config artifacts through a staged -> active file switch, and updates the
+active/applied revision in status and heartbeat payloads after the active switch
+succeeds.
 
 After validation, the agent reports `applied` to panel-api. Validation failures
 such as bad hash, bad signature, malformed payload, or local artifact write
@@ -122,14 +123,23 @@ Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 ```text
 revisions/<revision_number>/config.json
 revisions/<revision_number>/metadata.json
+staged/config.json
+staged/metadata.json
 active/config.json
 active/metadata.json
+state.json
 ```
 
-Writes use a temp-file then rename pattern. `metadata.json` includes the
-revision id, bundle hash, signer, rollback target revision, and config path
-references. This apply step prepares local files only; it does not start,
-restart, reload, or supervise Xray, and it does not execute rollback.
+Writes use a temp-file then rename pattern. The agent writes revision-specific
+and staged artifacts first, validates staged JSON, then replaces active
+artifacts. `metadata.json` and `state.json` include the revision id, bundle
+hash, signer, rollback target revision, operation kind, source revision metadata
+when present, and config path references.
+
+Rollback is file-level only. A rollback-originated pending revision is applied
+through the same staged -> active path, so active config files can switch back to
+a previous rendered config artifact. This step does not start, restart, reload,
+or supervise Xray.
 
 Not included here yet:
 

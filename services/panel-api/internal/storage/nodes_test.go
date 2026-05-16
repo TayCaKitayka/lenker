@@ -65,7 +65,7 @@ func TestScanConfigRevisionReturnsSignedPayloadAsBundle(t *testing.T) {
 	if revision.Bundle["protocol"] != "vless-reality-xtls-vision" {
 		t.Fatalf("expected config payload in response bundle, got %#v", revision.Bundle)
 	}
-	if revision.Bundle["config_kind"] != "xray-config-skeleton" {
+	if revision.Bundle["config_kind"] != configrender.ConfigKind {
 		t.Fatalf("expected xray skeleton payload in response bundle, got %#v", revision.Bundle)
 	}
 	responseHash, err := configbundle.HashPayload(revision.Bundle)

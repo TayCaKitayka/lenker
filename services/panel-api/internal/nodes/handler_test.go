@@ -308,6 +308,54 @@ func TestGetConfigRevisionSuccess(t *testing.T) {
 	}
 }
 
+func TestRollbackConfigRevisionSuccess(t *testing.T) {
+	rollbackRevision := testConfigRevision("revision-rollback", "node-1", 5)
+	rollbackRevision.Bundle = map[string]any{"operation_kind": "rollback", "source_revision_id": "revision-2"}
+	repo := &fakeNodesRepository{rollbackRevision: rollbackRevision}
+	handler := NewHandler(nil, repo, testAdminOnly)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions/revision-2/rollback", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.rollbackRevisionInput.NodeID != "node-1" || repo.rollbackRevisionInput.RevisionID != "revision-2" {
+		t.Fatalf("unexpected rollback input: %#v", repo.rollbackRevisionInput)
+	}
+	if repo.rollbackRevisionInput.CreatedByAdminID != "admin-1" {
+		t.Fatalf("expected admin id on rollback input: %#v", repo.rollbackRevisionInput)
+	}
+	if !strings.Contains(response.Body.String(), `"operation_kind":"rollback"`) {
+		t.Fatalf("expected rollback revision response: %s", response.Body.String())
+	}
+}
+
+func TestRollbackConfigRevisionRequiresAppliedTarget(t *testing.T) {
+	repo := &fakeNodesRepository{rollbackRevisionErr: storage.ErrInvalidNodeTransition}
+	handler := NewHandler(nil, repo, testAdminOnly)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions/revision-2/rollback", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "validation_error") {
+		t.Fatalf("expected validation_error response: %s", response.Body.String())
+	}
+}
+
 func TestRegisterSuccess(t *testing.T) {
 	repo := &fakeNodesRepository{}
 	handler := NewHandler(nil, repo, nil)
@@ -698,6 +746,9 @@ type fakeNodesRepository struct {
 	reportedRevisionInput    storage.ReportConfigRevisionInput
 	reportedRevision         storage.ConfigRevision
 	reportRevisionErr        error
+	rollbackRevisionInput    storage.CreateRollbackConfigRevisionInput
+	rollbackRevision         storage.ConfigRevision
+	rollbackRevisionErr      error
 }
 
 func (r *fakeNodesRepository) List(ctx context.Context) ([]storage.Node, error) {
@@ -789,6 +840,17 @@ func (r *fakeNodesRepository) CreateDummyConfigRevision(ctx context.Context, inp
 		return r.revision, nil
 	}
 	return testConfigRevision("revision-1", input.NodeID, 1), nil
+}
+
+func (r *fakeNodesRepository) CreateRollbackConfigRevision(ctx context.Context, input storage.CreateRollbackConfigRevisionInput) (storage.ConfigRevision, error) {
+	r.rollbackRevisionInput = input
+	if r.rollbackRevisionErr != nil {
+		return storage.ConfigRevision{}, r.rollbackRevisionErr
+	}
+	if r.rollbackRevision.ID != "" {
+		return r.rollbackRevision, nil
+	}
+	return testConfigRevision("revision-rollback", input.NodeID, 2), nil
 }
 
 func (r *fakeNodesRepository) ListConfigRevisions(ctx context.Context, nodeID string) ([]storage.ConfigRevision, error) {

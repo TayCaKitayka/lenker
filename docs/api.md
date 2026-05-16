@@ -277,12 +277,13 @@ Generate and deploy the next signed config revision.
 Current implementation note:
 
 The implemented foundation uses `POST /nodes/{nodeId}/config-revisions` to
-create deterministic signed subscription-aware VLESS Reality Xray config
+create deterministic signed subscription-aware VLESS Reality Xray-compatible
 skeleton payloads for the single MVP path. It derives `subscription_inputs` and
 `access_entries` from active subscriptions, active users, plans, and target node
-region. It stores revision number, status, bundle hash, signature, signer,
-rollback target metadata, and timestamps. It does not restart processes or
-execute rollback.
+region. The rendered `config` object follows an Xray-like shape with `log`,
+`policy`, `stats`, VLESS Reality `inbounds`, `outbounds`, and `routing`. It
+stores revision number, status, bundle hash, signature, signer, rollback target
+metadata, and timestamps. It does not restart processes.
 
 #### `GET /nodes/{nodeId}/config-revisions`
 
@@ -319,10 +320,19 @@ only its own revision as `applied` or `failed`. Applied reports set the revision
 `failed_at` and persist a concise `error_message`. It does not execute
 rollback, restart processes, or control Xray.
 
-Rollback planning is metadata-only here. New revisions carry
-`rollback_target_revision`, usually the node's previously active revision, so a
-future executor can choose a rollback target without this endpoint performing
-rollback.
+#### `POST /nodes/{nodeId}/config-revisions/{revisionId}/rollback`
+
+Create a pending rollback revision from an applied config revision.
+
+Current implementation note:
+
+This admin endpoint verifies that the target revision belongs to the node and is
+applied, then creates a new pending revision whose signed payload preserves the
+target rendered config object and adds rollback source metadata. The new
+revision carries `rollback_target_revision` set to the node's current active
+revision. Node-agent later applies it through the normal polling path. Panel-api
+does not push to nodes, mutate local files, restart processes, or execute a
+runtime rollback.
 
 #### `POST /nodes/{nodeId}/rollback`
 

@@ -100,6 +100,12 @@ type CreateDummyConfigRevisionInput struct {
 	CreatedByAdminID string
 }
 
+type CreateRollbackConfigRevisionInput struct {
+	NodeID           string
+	RevisionID       string
+	CreatedByAdminID string
+}
+
 type ReportConfigRevisionInput struct {
 	NodeID       string
 	NodeToken    string
@@ -122,6 +128,7 @@ type NodesRepository interface {
 	Disable(ctx context.Context, id string) (Node, error)
 	Enable(ctx context.Context, id string) (Node, error)
 	CreateDummyConfigRevision(ctx context.Context, input CreateDummyConfigRevisionInput) (ConfigRevision, error)
+	CreateRollbackConfigRevision(ctx context.Context, input CreateRollbackConfigRevisionInput) (ConfigRevision, error)
 	ListConfigRevisions(ctx context.Context, nodeID string) ([]ConfigRevision, error)
 	FindConfigRevision(ctx context.Context, nodeID string, revisionID string) (ConfigRevision, error)
 	FindLatestPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, error)
@@ -507,6 +514,122 @@ func (r *nodesRepository) CreateDummyConfigRevision(ctx context.Context, input C
 		RollbackTargetRevision: currentRevision,
 		SubscriptionInputs:     subscriptionInputs,
 	})
+	bundleHash, err := configbundle.HashPayload(payload)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	bundle := configbundle.Bundle{
+		NodeID:                 input.NodeID,
+		RevisionNumber:         nextRevision,
+		Status:                 "pending",
+		BundleHash:             bundleHash,
+		Signer:                 configbundle.DefaultSigner,
+		RollbackTargetRevision: currentRevision,
+		Payload:                payload,
+	}
+	signature, err := configbundle.NewDevSigner().Sign(bundle)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	bundle.Signature = signature
+
+	bundleJSON, err := json.Marshal(bundle)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+
+	var createdBy sql.NullString
+	if input.CreatedByAdminID != "" {
+		createdBy = sql.NullString{String: input.CreatedByAdminID, Valid: true}
+	}
+
+	revision, err := scanConfigRevision(tx.QueryRowContext(ctx, `
+		INSERT INTO config_revisions (
+		    node_id,
+		    revision_number,
+		    bundle_hash,
+		    signature,
+		    signer,
+		    status,
+		    rollback_target_revision,
+		    bundle_json,
+		    created_by_admin_id
+		)
+		VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
+		RETURNING id::text, node_id::text, revision_number, bundle_hash, signature, signer, status, rollback_target_revision, bundle_json, created_at, applied_at, failed_at, rolled_back_at, error_message
+	`, input.NodeID, nextRevision, bundleHash, signature, configbundle.DefaultSigner, currentRevision, bundleJSON, createdBy))
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ConfigRevision{}, err
+	}
+	return revision, nil
+}
+
+func (r *nodesRepository) CreateRollbackConfigRevision(ctx context.Context, input CreateRollbackConfigRevisionInput) (ConfigRevision, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	defer tx.Rollback()
+
+	var currentRevision int
+	var status string
+	var drainState string
+	err = tx.QueryRowContext(ctx, `
+		SELECT active_revision, status, drain_state
+		FROM nodes
+		WHERE id = $1
+		FOR UPDATE
+	`, input.NodeID).Scan(&currentRevision, &status, &drainState)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ConfigRevision{}, ErrNotFound
+		}
+		return ConfigRevision{}, err
+	}
+	if status == "disabled" || drainState != "active" {
+		return ConfigRevision{}, ErrInvalidNodeTransition
+	}
+
+	var target ConfigRevision
+	target, err = scanConfigRevision(tx.QueryRowContext(ctx, `
+		SELECT id::text, node_id::text, revision_number, bundle_hash, signature, signer, status, rollback_target_revision, bundle_json, created_at, applied_at, failed_at, rolled_back_at, error_message
+		FROM config_revisions
+		WHERE node_id = $1
+		  AND id = $2
+		FOR UPDATE
+	`, input.NodeID, input.RevisionID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ConfigRevision{}, ErrNotFound
+		}
+		return ConfigRevision{}, err
+	}
+	if target.Status != "applied" {
+		return ConfigRevision{}, ErrInvalidNodeTransition
+	}
+
+	var nextRevision int
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(revision_number), 0) + 1
+		FROM config_revisions
+		WHERE node_id = $1
+	`, input.NodeID).Scan(&nextRevision)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+
+	payload, err := configrender.RenderRollbackPayload(target.Bundle, configrender.RollbackInput{
+		RevisionNumber:         nextRevision,
+		RollbackTargetRevision: currentRevision,
+		SourceRevisionID:       target.ID,
+		SourceRevisionNumber:   target.RevisionNumber,
+	})
+	if err != nil {
+		return ConfigRevision{}, err
+	}
 	bundleHash, err := configbundle.HashPayload(payload)
 	if err != nil {
 		return ConfigRevision{}, err

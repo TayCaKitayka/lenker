@@ -336,7 +336,7 @@ Conservative lifecycle behavior:
 ## Config Revision Metadata
 
 The config foundation creates deterministic subscription-aware VLESS Reality
-Xray config skeleton payloads for the single MVP protocol path and records
+Xray-compatible skeleton payloads for the single MVP protocol path and records
 revision number, status, bundle hash, signature, signer, rollback target
 metadata, and timestamps. The renderer uses real active users, plans, and
 subscriptions as `subscription_inputs` and turns eligible subscriptions into
@@ -344,8 +344,10 @@ deterministic `access_entries`. Eligibility is intentionally simple for this
 stage: active subscriptions for active users whose preferred region is empty or
 matches the target node region.
 
-The payload is structured and hash/signature stable. The panel still does not
-write runtime Xray config files, restart or control Xray, or execute rollback.
+The payload is structured and hash/signature stable. Its `config` object now
+uses Xray-like `log`, `policy`, `stats`, `inbounds`, `outbounds`, and `routing`
+sections for the single VLESS + Reality + XTLS Vision path. The panel still does
+not write runtime Xray config files, restart or control Xray.
 
 Create a config revision metadata record:
 
@@ -401,10 +403,18 @@ Applied reports update revision status and node `active_revision`. Failed
 reports persist `failed_at` and `error_message`. The report path does not
 execute rollback, restart processes, or control Xray.
 
-Rollback planning is metadata-only at this stage. New revisions keep
-`rollback_target_revision` pointed at the node's current `active_revision`, and
-previous applied revisions remain queryable through the config revision list and
-detail endpoints. There is no rollback executor yet.
+Rollback is represented as a normal pending revision created from a known-good
+applied revision:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<applied_revision_id>/rollback \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+The rollback endpoint recomputes hash/signature for the new pending revision,
+sets `operation_kind=rollback` and source revision metadata in the signed
+payload, and leaves file switching to node-agent polling. Panel-api does not
+mutate node files, restart processes, or run a rollback executor.
 
 Manual smoke checklist:
 

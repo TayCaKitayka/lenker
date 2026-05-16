@@ -398,6 +398,19 @@ export async function createNodeConfigRevision(session: StoredSession, nodeID: s
   return payload.data;
 }
 
+export async function rollbackNodeConfigRevision(
+  session: StoredSession,
+  nodeID: string,
+  revisionID: string,
+): Promise<ConfigRevision> {
+  const payload = await authorizedRequest<ConfigRevisionResponse>(
+    session,
+    `/api/v1/nodes/${encodeURIComponent(nodeID)}/config-revisions/${encodeURIComponent(revisionID)}/rollback`,
+    { method: "POST" },
+  );
+  return payload.data;
+}
+
 interface AuthorizedRequestOptions {
   method?: "GET" | "POST" | "PATCH";
   body?: unknown;

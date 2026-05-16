@@ -4,8 +4,8 @@ This checklist verifies the local node bootstrap, registration, heartbeat,
 admin node lifecycle, and config revision report flow. It is for local
 development only.
 
-It does not verify mTLS, Xray runtime process control, rollback, metrics, or
-traffic handling.
+It does not verify mTLS, Xray runtime process control, process restart/reload,
+metrics, or traffic handling.
 
 ## Prerequisites
 
@@ -168,8 +168,10 @@ Expected result:
 - response contains `data.revision_number`;
 - response contains `data.bundle_hash`, `data.signature`, `data.signer`, and
   `data.bundle`;
-- `data.bundle` contains a deterministic subscription-aware VLESS Reality Xray
-  config skeleton payload for the single MVP path;
+- `data.bundle` contains a deterministic subscription-aware VLESS Reality Xray-
+  compatible skeleton payload for the single MVP path;
+- `data.bundle.config` contains Xray-like `log`, `policy`, `stats`, `inbounds`,
+  `outbounds`, and `routing` sections;
 - `data.bundle.subscription_inputs` and `data.bundle.access_entries` are arrays,
   empty if there are no active eligible subscriptions for this node region;
 - `data.rollback_target_revision` points at the node's active revision, or `0`
@@ -219,16 +221,33 @@ curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisi
   -d '{"status":"failed","error_message":"invalid config payload"}'
 ```
 
-This smoke path still does not write Xray config files, restart processes, or
-execute rollback from the panel. The node-agent serialization foundation writes
-local artifacts only under its state directory:
+This smoke path still does not restart processes or control Xray. The node-agent
+serialization foundation writes local artifacts only under its state directory:
 
 ```text
 revisions/<revision_number>/config.json
 revisions/<revision_number>/metadata.json
+staged/config.json
+staged/metadata.json
 active/config.json
 active/metadata.json
+state.json
 ```
+
+Rollback is requested by creating a new pending revision from an applied source:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions/$LENKER_REVISION_ID/rollback \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Expected result:
+
+- response contains a new pending revision;
+- `data.bundle.operation_kind` is `rollback`;
+- `data.bundle.source_revision_number` points at the applied source revision;
+- the agent later applies it with the same staged -> active file switch path;
+- no Xray process is restarted or controlled.
 
 After metadata apply in the agent skeleton, heartbeat can report the applied
 revision number:

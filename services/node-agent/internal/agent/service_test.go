@@ -412,6 +412,9 @@ func TestApplyConfigRevisionWritesLocalArtifacts(t *testing.T) {
 	if status.ActiveRevision != 4 || status.LastRollbackRevision != 3 {
 		t.Fatalf("expected status after local apply: %#v", status)
 	}
+	if status.StagedRevision != 4 || status.RollbackCandidateRevision != 3 {
+		t.Fatalf("expected staged rollback metadata after local apply: %#v", status)
+	}
 	configBody, err := os.ReadFile(status.ConfigArtifactPath)
 	if err != nil {
 		t.Fatalf("expected active config artifact: %v", err)
@@ -429,6 +432,121 @@ func TestApplyConfigRevisionWritesLocalArtifacts(t *testing.T) {
 	revisionConfigPath := filepath.Join(filepath.Dir(filepath.Dir(status.ConfigArtifactPath)), "revisions", "4", "config.json")
 	if _, err := os.Stat(revisionConfigPath); err != nil {
 		t.Fatalf("expected revision config artifact: %v", err)
+	}
+	stagedConfigPath := filepath.Join(filepath.Dir(filepath.Dir(status.ConfigArtifactPath)), "staged", "config.json")
+	if _, err := os.Stat(stagedConfigPath); err != nil {
+		t.Fatalf("expected staged config artifact: %v", err)
+	}
+	statePath := filepath.Join(filepath.Dir(filepath.Dir(status.ConfigArtifactPath)), "state.json")
+	if _, err := os.Stat(statePath); err != nil {
+		t.Fatalf("expected state artifact: %v", err)
+	}
+}
+
+func TestStageFailureLeavesActiveArtifactUntouched(t *testing.T) {
+	stateDir := t.TempDir()
+	activeDir := filepath.Join(stateDir, "active")
+	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+		t.Fatalf("expected active dir: %v", err)
+	}
+	activeConfigPath := filepath.Join(activeDir, "config.json")
+	if err := os.WriteFile(activeConfigPath, []byte(`{"revision":"old"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("expected old active config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "staged"), []byte("not-a-dir"), 0o600); err != nil {
+		t.Fatalf("expected staged file fixture: %v", err)
+	}
+
+	service := NewService(Identity{NodeID: "node-1", StateDir: stateDir})
+	err := service.ApplyConfigRevision(signedTestConfigRevision(t, "node-1", 4, 3))
+	if !errors.Is(err, ErrConfigArtifactWrite) {
+		t.Fatalf("expected artifact write error, got %v", err)
+	}
+	body, err := os.ReadFile(activeConfigPath)
+	if err != nil {
+		t.Fatalf("expected active config to remain readable: %v", err)
+	}
+	if string(body) != `{"revision":"old"}`+"\n" {
+		t.Fatalf("stage failure changed active config: %s", string(body))
+	}
+	if service.Status().ActiveRevision != 0 {
+		t.Fatalf("stage failure must not advance active revision: %#v", service.Status())
+	}
+}
+
+func TestActivateFailureLeavesActiveArtifactUntouched(t *testing.T) {
+	stateDir := t.TempDir()
+	activeDir := filepath.Join(stateDir, "active")
+	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+		t.Fatalf("expected active dir: %v", err)
+	}
+	activeConfigPath := filepath.Join(activeDir, "config.json")
+	if err := os.WriteFile(activeConfigPath, []byte(`{"revision":"old"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("expected old active config: %v", err)
+	}
+
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	service := NewService(Identity{NodeID: "node-1", StateDir: stateDir})
+	staged, err := service.StageConfigRevision(revision)
+	if err != nil {
+		t.Fatalf("expected staged revision: %v", err)
+	}
+	if err := os.Remove(staged.StagedConfigPath); err != nil {
+		t.Fatalf("expected staged config removal: %v", err)
+	}
+
+	_, err = service.ActivateStagedConfigRevision(revision, staged)
+	if !errors.Is(err, ErrConfigArtifactWrite) {
+		t.Fatalf("expected artifact write error, got %v", err)
+	}
+	body, err := os.ReadFile(activeConfigPath)
+	if err != nil {
+		t.Fatalf("expected active config to remain readable: %v", err)
+	}
+	if string(body) != `{"revision":"old"}`+"\n" {
+		t.Fatalf("activation failure changed active config: %s", string(body))
+	}
+	if service.Status().ActiveRevision != 0 {
+		t.Fatalf("activation failure must not advance active revision: %#v", service.Status())
+	}
+}
+
+func TestApplyRollbackRevisionSwitchesActiveConfigToSourceSemantics(t *testing.T) {
+	stateDir := t.TempDir()
+	service := NewService(Identity{NodeID: "node-1", StateDir: stateDir})
+	revisionA := signedTestConfigRevision(t, "node-1", 1, 0)
+	revisionB := signedTestConfigRevision(t, "node-1", 2, 1)
+	revisionB.Bundle["config"].(map[string]any)["routing"] = map[string]any{"domainStrategy": "IPIfNonMatch"}
+	resignTestConfigRevision(t, &revisionB)
+	rollbackRevision := signedTestConfigRevision(t, "node-1", 3, 2)
+	rollbackRevision.Bundle["config"] = revisionA.Bundle["config"]
+	rollbackRevision.Bundle["operation_kind"] = "rollback"
+	rollbackRevision.Bundle["source_revision_id"] = revisionA.ID
+	rollbackRevision.Bundle["source_revision_number"] = revisionA.RevisionNumber
+	resignTestConfigRevision(t, &rollbackRevision)
+
+	if err := service.ApplyConfigRevision(revisionA); err != nil {
+		t.Fatalf("expected revision A apply: %v", err)
+	}
+	revisionAConfig, err := os.ReadFile(service.Status().ConfigArtifactPath)
+	if err != nil {
+		t.Fatalf("expected revision A config: %v", err)
+	}
+	if err := service.ApplyConfigRevision(revisionB); err != nil {
+		t.Fatalf("expected revision B apply: %v", err)
+	}
+	if err := service.ApplyConfigRevision(rollbackRevision); err != nil {
+		t.Fatalf("expected rollback revision apply: %v", err)
+	}
+	rollbackConfig, err := os.ReadFile(service.Status().ConfigArtifactPath)
+	if err != nil {
+		t.Fatalf("expected rollback config: %v", err)
+	}
+	if string(rollbackConfig) != string(revisionAConfig) {
+		t.Fatalf("rollback active config must match source config:\n%s\n---\n%s", string(rollbackConfig), string(revisionAConfig))
+	}
+	if service.Status().ActiveRevision != 3 || service.Status().RollbackCandidateRevision != 2 {
+		t.Fatalf("unexpected rollback status: %#v", service.Status())
 	}
 }
 
@@ -452,7 +570,8 @@ func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, r
 		"protocol":        "vless-reality-xtls-vision",
 		"revision_number": revisionNumber,
 		"core_type":       "xray",
-		"config_kind":     "xray-config-skeleton",
+		"config_kind":     "xray-config-compatible-skeleton",
+		"operation_kind":  "deploy",
 		"node": map[string]any{
 			"id": nodeID,
 		},
@@ -462,7 +581,40 @@ func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, r
 			"xtls":     "vision",
 		},
 		"config": map[string]any{
-			"inbounds":  []any{},
+			"log": map[string]any{
+				"loglevel": "warning",
+			},
+			"inbounds": []any{
+				map[string]any{
+					"tag":      "vless-reality-in",
+					"listen":   "0.0.0.0",
+					"port":     443,
+					"protocol": "vless",
+					"settings": map[string]any{
+						"clients": []any{
+							map[string]any{
+								"id":    "00000000-0000-0000-0000-000000000004",
+								"email": "subscription:00000000-0000-0000-0000-000000000004",
+								"flow":  "xtls-rprx-vision",
+								"level": 0,
+							},
+						},
+						"decryption": "none",
+						"fallbacks":  []any{},
+					},
+					"streamSettings": map[string]any{
+						"network":  "tcp",
+						"security": "reality",
+						"realitySettings": map[string]any{
+							"show":        false,
+							"dest":        "www.cloudflare.com:443",
+							"serverNames": []any{"www.cloudflare.com"},
+							"privateKey":  "lenker-placeholder-reality-private-key",
+							"shortIds":    []any{"lenker00"},
+						},
+					},
+				},
+			},
 			"outbounds": []any{},
 			"routing":   map[string]any{},
 		},

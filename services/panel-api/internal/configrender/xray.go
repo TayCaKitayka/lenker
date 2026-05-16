@@ -1,6 +1,7 @@
 package configrender
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 )
@@ -10,6 +11,10 @@ const (
 	GeneratedBy   = "panel-api"
 	ProtocolVLESS = "vless-reality-xtls-vision"
 	CoreTypeXray  = "xray"
+	ConfigKind    = "xray-config-compatible-skeleton"
+
+	OperationDeploy   = "deploy"
+	OperationRollback = "rollback"
 )
 
 type RenderInput struct {
@@ -36,6 +41,13 @@ type SubscriptionInput struct {
 	ExpiresAt          string
 }
 
+type RollbackInput struct {
+	RevisionNumber         int
+	RollbackTargetRevision int
+	SourceRevisionID       string
+	SourceRevisionNumber   int
+}
+
 func RenderVLESSRealityPayload(input RenderInput) map[string]any {
 	inboundTag := "vless-reality-in"
 	outboundTag := "direct"
@@ -49,6 +61,7 @@ func RenderVLESSRealityPayload(input RenderInput) map[string]any {
 		"protocol":                 ProtocolVLESS,
 		"revision_number":          input.RevisionNumber,
 		"rollback_target_revision": input.RollbackTargetRevision,
+		"operation_kind":           OperationDeploy,
 		"node": map[string]any{
 			"id":           input.NodeID,
 			"hostname":     input.Hostname,
@@ -61,10 +74,29 @@ func RenderVLESSRealityPayload(input RenderInput) map[string]any {
 			"security": "reality",
 			"xtls":     "vision",
 		},
-		"config_kind": "xray-config-skeleton",
+		"config_kind": ConfigKind,
 		"config": map[string]any{
 			"log": map[string]any{
 				"loglevel": "warning",
+			},
+			"stats": map[string]any{},
+			"policy": map[string]any{
+				"levels": map[string]any{
+					"0": map[string]any{
+						"handshake":         4,
+						"connIdle":          300,
+						"uplinkOnly":        2,
+						"downlinkOnly":      5,
+						"statsUserUplink":   true,
+						"statsUserDownlink": true,
+					},
+				},
+				"system": map[string]any{
+					"statsInboundUplink":    true,
+					"statsInboundDownlink":  true,
+					"statsOutboundUplink":   true,
+					"statsOutboundDownlink": true,
+				},
 			},
 			"inbounds": []any{
 				map[string]any{
@@ -75,16 +107,21 @@ func RenderVLESSRealityPayload(input RenderInput) map[string]any {
 					"settings": map[string]any{
 						"clients":    renderClients(accessEntries),
 						"decryption": "none",
+						"fallbacks":  []any{},
 					},
 					"streamSettings": map[string]any{
 						"network":  "tcp",
 						"security": "reality",
 						"realitySettings": map[string]any{
-							"show":        false,
-							"dest":        "www.cloudflare.com:443",
-							"serverNames": []any{"www.cloudflare.com"},
-							"privateKey":  "lenker-placeholder-reality-private-key",
-							"shortIds":    []any{"lenker00"},
+							"show":         false,
+							"dest":         "www.cloudflare.com:443",
+							"xver":         0,
+							"serverNames":  []any{"www.cloudflare.com"},
+							"privateKey":   "lenker-placeholder-reality-private-key",
+							"shortIds":     []any{"lenker00"},
+							"minClientVer": "",
+							"maxClientVer": "",
+							"maxTimeDiff":  0,
 						},
 					},
 					"sniffing": map[string]any{
@@ -120,6 +157,39 @@ func RenderVLESSRealityPayload(input RenderInput) map[string]any {
 			len(subscriptionInputs),
 		),
 	}
+}
+
+func RenderRollbackPayload(target map[string]any, input RollbackInput) (map[string]any, error) {
+	payload, err := clonePayload(target)
+	if err != nil {
+		return nil, err
+	}
+
+	payload["revision_number"] = input.RevisionNumber
+	payload["rollback_target_revision"] = input.RollbackTargetRevision
+	payload["operation_kind"] = OperationRollback
+	payload["source_revision_id"] = input.SourceRevisionID
+	payload["source_revision_number"] = input.SourceRevisionNumber
+	payload["config_kind"] = ConfigKind
+	payload["config_text"] = fmt.Sprintf(
+		"lenker xray vless reality rollback skeleton revision=%d source_revision=%d",
+		input.RevisionNumber,
+		input.SourceRevisionNumber,
+	)
+
+	return payload, nil
+}
+
+func clonePayload(target map[string]any) (map[string]any, error) {
+	body, err := json.Marshal(target)
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 func sortedSubscriptionInputs(inputs []SubscriptionInput) []SubscriptionInput {
@@ -195,6 +265,7 @@ func renderClients(accessEntries []any) []any {
 			"id":    entry["vless_client_id"],
 			"email": entry["email"],
 			"flow":  entry["flow"],
+			"level": 0,
 		})
 	}
 	return result

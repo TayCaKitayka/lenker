@@ -20,16 +20,18 @@ type Identity struct {
 }
 
 type Status struct {
-	NodeID               string    `json:"node_id,omitempty"`
-	Status               string    `json:"status"`
-	Registered           bool      `json:"registered"`
-	PanelURL             string    `json:"panel_url,omitempty"`
-	LastHeartbeatAt      time.Time `json:"last_heartbeat_at,omitempty"`
-	ActiveRevision       int       `json:"active_revision"`
-	LastAppliedRevision  int       `json:"last_applied_revision"`
-	LastRollbackRevision int       `json:"last_rollback_revision"`
-	ConfigArtifactPath   string    `json:"config_artifact_path,omitempty"`
-	MetadataArtifactPath string    `json:"metadata_artifact_path,omitempty"`
+	NodeID                    string    `json:"node_id,omitempty"`
+	Status                    string    `json:"status"`
+	Registered                bool      `json:"registered"`
+	PanelURL                  string    `json:"panel_url,omitempty"`
+	LastHeartbeatAt           time.Time `json:"last_heartbeat_at,omitempty"`
+	ActiveRevision            int       `json:"active_revision"`
+	LastAppliedRevision       int       `json:"last_applied_revision"`
+	LastRollbackRevision      int       `json:"last_rollback_revision"`
+	StagedRevision            int       `json:"staged_revision"`
+	RollbackCandidateRevision int       `json:"rollback_candidate_revision"`
+	ConfigArtifactPath        string    `json:"config_artifact_path,omitempty"`
+	MetadataArtifactPath      string    `json:"metadata_artifact_path,omitempty"`
 }
 
 type RegistrationPayload struct {

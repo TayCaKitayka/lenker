@@ -10,6 +10,7 @@ import {
   listNodeConfigRevisions,
   listNodes,
   PanelApiError,
+  rollbackNodeConfigRevision,
   undrainNode,
   type ConfigRevision,
   type Node,
@@ -61,6 +62,7 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
   const [revisionDetailLoadState, setRevisionDetailLoadState] = useState<LoadState>("idle");
   const [revisionErrorMessage, setRevisionErrorMessage] = useState<string | null>(null);
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
+  const [rollbackRevisionID, setRollbackRevisionID] = useState<string | null>(null);
 
   const activeNodes = useMemo(() => nodes.filter((node) => node.status === "active").length, [nodes]);
   const drainingNodes = useMemo(() => nodes.filter((node) => node.drain_state === "draining").length, [nodes]);
@@ -320,15 +322,40 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
 
     try {
       const revision = await createNodeConfigRevision(session, selectedNodeID);
-      setSuccessMessage(`Config revision #${revision.revision_number} metadata created.`);
+      setSuccessMessage(`Config revision #${revision.revision_number} created.`);
       await loadNodes(selectedNodeID);
     } catch (error) {
       if (handleUnauthorizedError(error, onUnauthorized)) {
         return;
       }
-      setRevisionErrorMessage(formatPanelError(error, "Unable to create config revision metadata."));
+      setRevisionErrorMessage(formatPanelError(error, "Unable to create config revision."));
     } finally {
       setIsCreatingRevision(false);
+    }
+  }
+
+  async function rollbackRevision(revision: ConfigRevision) {
+    if (!selectedNodeID) {
+      return;
+    }
+
+    setRollbackRevisionID(revision.id);
+    setRevisionErrorMessage(null);
+    setSuccessMessage(null);
+    setBootstrapToken(null);
+
+    try {
+      const rollback = await rollbackNodeConfigRevision(session, selectedNodeID, revision.id);
+      setSuccessMessage(`Rollback revision #${rollback.revision_number} created from #${revision.revision_number}.`);
+      await loadNodes(selectedNodeID);
+      await loadConfigRevisions(selectedNodeID, rollback.id);
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setRevisionErrorMessage(formatPanelError(error, "Unable to create rollback revision."));
+    } finally {
+      setRollbackRevisionID(null);
     }
   }
 
@@ -562,7 +589,7 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
                 {revisionsLoadState === "loading" ? "Refreshing..." : "Refresh"}
               </button>
               <button className="table-button" type="button" onClick={createDummyRevision} disabled={isCreatingRevision}>
-                {isCreatingRevision ? "Creating..." : "Create dummy revision"}
+                {isCreatingRevision ? "Creating..." : "Create revision"}
               </button>
             </div>
           </div>
@@ -607,14 +634,24 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
                       <td>{formatNodeTimestamp(revision.rolled_back_at)}</td>
                       <td>{revision.error_message || "-"}</td>
                       <td>
-                        <button
-                          className="table-button"
-                          type="button"
-                          onClick={() => selectRevision(revision.id)}
-                          disabled={revisionDetailLoadState === "loading"}
-                        >
-                          Details
-                        </button>
+                        <div className="row-actions">
+                          <button
+                            className="table-button"
+                            type="button"
+                            onClick={() => selectRevision(revision.id)}
+                            disabled={revisionDetailLoadState === "loading"}
+                          >
+                            Details
+                          </button>
+                          <button
+                            className="table-button"
+                            type="button"
+                            onClick={() => rollbackRevision(revision)}
+                            disabled={revision.status !== "applied" || rollbackRevisionID !== null}
+                          >
+                            {rollbackRevisionID === revision.id ? "Rolling back..." : "Rollback"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -640,6 +677,8 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
                 <DetailItem label="Bundle hash" value={selectedRevision.bundle_hash} mono />
                 <DetailItem label="Signature" value={selectedRevision.signature} mono />
                 <DetailItem label="Rollback target" value={String(selectedRevision.rollback_target_revision)} />
+                <DetailItem label="Operation" value={readBundleString(selectedRevision.bundle, "operation_kind")} />
+                <DetailItem label="Source revision" value={readBundleNumber(selectedRevision.bundle, "source_revision_number")} />
                 <DetailItem label="Created" value={formatNodeTimestamp(selectedRevision.created_at)} />
                 <DetailItem label="Applied" value={formatNodeTimestamp(selectedRevision.applied_at)} />
                 <DetailItem label="Failed" value={formatNodeTimestamp(selectedRevision.failed_at)} />
@@ -710,4 +749,20 @@ function formatPanelError(error: unknown, fallbackMessage: string): string {
     return `${error.message} (${error.code})`;
   }
   return error instanceof Error ? error.message : fallbackMessage;
+}
+
+function readBundleString(bundle: unknown, key: string): string | null {
+  if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
+    return null;
+  }
+  const value = (bundle as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function readBundleNumber(bundle: unknown, key: string): string | null {
+  if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
+    return null;
+  }
+  const value = (bundle as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : null;
 }

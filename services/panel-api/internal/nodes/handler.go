@@ -44,6 +44,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 		mux.Handle("POST /api/v1/nodes/{id}/enable", h.adminOnly(http.HandlerFunc(h.Enable)))
 		mux.Handle("POST /api/v1/nodes/{id}/config-revisions", h.adminOnly(http.HandlerFunc(h.CreateConfigRevision)))
 		mux.Handle("GET /api/v1/nodes/{id}/config-revisions", h.adminOnly(http.HandlerFunc(h.ListConfigRevisions)))
+		mux.Handle("POST /api/v1/nodes/{id}/config-revisions/{revisionId}/rollback", h.adminOnly(http.HandlerFunc(h.RollbackConfigRevision)))
 		mux.Handle("GET /api/v1/nodes/{id}/config-revisions/{revisionId}", h.adminOnly(http.HandlerFunc(h.GetConfigRevision)))
 	}
 	mux.HandleFunc("POST /api/v1/nodes/register", h.Register)
@@ -203,6 +204,34 @@ func (h *Handler) GetConfigRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: configRevisionResponse(revision)})
+}
+
+func (h *Handler) RollbackConfigRevision(w http.ResponseWriter, r *http.Request) {
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	revisionID := strings.TrimSpace(r.PathValue("revisionId"))
+	if nodeID == "" {
+		httpapi.WriteBadRequest(w, "node id is required")
+		return
+	}
+	if revisionID == "" {
+		httpapi.WriteBadRequest(w, "revision id is required")
+		return
+	}
+
+	admin, _ := auth.AdminFromContext(r.Context())
+	revision, err := h.nodes.CreateRollbackConfigRevision(r.Context(), storage.CreateRollbackConfigRevisionInput{
+		NodeID:           nodeID,
+		RevisionID:       revisionID,
+		CreatedByAdminID: admin.ID,
+	})
+	if err != nil {
+		h.recordAdmin(r, audit.ActionNodeConfigRevisionRollback, nodeID, audit.OutcomeFailure, errorReason(err))
+		writeNodeError(w, err)
+		return
+	}
+
+	h.recordAdmin(r, audit.ActionNodeConfigRevisionRollback, nodeID, audit.OutcomeSuccess, "")
+	httpapi.WriteJSON(w, http.StatusCreated, httpapi.Response{Data: configRevisionResponse(revision)})
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {

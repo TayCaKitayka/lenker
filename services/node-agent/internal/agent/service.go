@@ -216,11 +216,24 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 }
 
 type ConfigArtifact struct {
-	ConfigPath   string
-	MetadataPath string
+	ConfigPath           string
+	MetadataPath         string
+	RevisionConfigPath   string
+	RevisionMetadataPath string
+	StagedConfigPath     string
+	StagedMetadataPath   string
+	StatePath            string
 }
 
 func (s *Service) SerializeConfigRevision(revision ConfigRevision) (ConfigArtifact, error) {
+	staged, err := s.StageConfigRevision(revision)
+	if err != nil {
+		return ConfigArtifact{}, err
+	}
+	return s.ActivateStagedConfigRevision(revision, staged)
+}
+
+func (s *Service) StageConfigRevision(revision ConfigRevision) (ConfigArtifact, error) {
 	stateDir := strings.TrimSpace(s.identity.StateDir)
 	if stateDir == "" {
 		return ConfigArtifact{}, ErrStateDirRequired
@@ -232,11 +245,12 @@ func (s *Service) SerializeConfigRevision(revision ConfigRevision) (ConfigArtifa
 	}
 
 	revisionDir := filepath.Join(stateDir, "revisions", fmt.Sprintf("%d", revision.RevisionNumber))
+	stagedDir := filepath.Join(stateDir, "staged")
 	activeDir := filepath.Join(stateDir, "active")
 	if err := os.MkdirAll(revisionDir, 0o700); err != nil {
 		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
 	}
-	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+	if err := os.MkdirAll(stagedDir, 0o700); err != nil {
 		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
 	}
 
@@ -248,8 +262,11 @@ func (s *Service) SerializeConfigRevision(revision ConfigRevision) (ConfigArtifa
 
 	configPath := filepath.Join(revisionDir, "config.json")
 	metadataPath := filepath.Join(revisionDir, "metadata.json")
+	stagedConfigPath := filepath.Join(stagedDir, "config.json")
+	stagedMetadataPath := filepath.Join(stagedDir, "metadata.json")
 	activeConfigPath := filepath.Join(activeDir, "config.json")
 	activeMetadataPath := filepath.Join(activeDir, "metadata.json")
+	statePath := filepath.Join(stateDir, "state.json")
 
 	metadata := map[string]any{
 		"revision_id":              revision.ID,
@@ -258,9 +275,13 @@ func (s *Service) SerializeConfigRevision(revision ConfigRevision) (ConfigArtifa
 		"bundle_hash":              revision.BundleHash,
 		"signer":                   revision.Signer,
 		"rollback_target_revision": revision.RollbackTargetRevision,
+		"operation_kind":           stringFromBundle(revision.Bundle, "operation_kind"),
+		"source_revision_id":       stringFromBundle(revision.Bundle, "source_revision_id"),
+		"source_revision_number":   numberFromBundle(revision.Bundle, "source_revision_number"),
 		"config_path":              configPath,
+		"staged_config_path":       stagedConfigPath,
 		"active_config_path":       activeConfigPath,
-		"apply_mode":               "serialized-config-only",
+		"apply_mode":               "staged-active-file-switch",
 	}
 	metadataBody, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
@@ -274,15 +295,94 @@ func (s *Service) SerializeConfigRevision(revision ConfigRevision) (ConfigArtifa
 	}{
 		{path: configPath, body: configBody},
 		{path: metadataPath, body: metadataBody},
-		{path: activeConfigPath, body: configBody},
-		{path: activeMetadataPath, body: metadataBody},
+		{path: stagedConfigPath, body: configBody},
+		{path: stagedMetadataPath, body: metadataBody},
 	} {
 		if err := writeFileAtomic(write.path, write.body, 0o600); err != nil {
 			return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
 		}
 	}
 
-	return ConfigArtifact{ConfigPath: activeConfigPath, MetadataPath: activeMetadataPath}, nil
+	s.status.StagedRevision = revision.RevisionNumber
+	s.status.RollbackCandidateRevision = revision.RollbackTargetRevision
+
+	return ConfigArtifact{
+		ConfigPath:           activeConfigPath,
+		MetadataPath:         activeMetadataPath,
+		RevisionConfigPath:   configPath,
+		RevisionMetadataPath: metadataPath,
+		StagedConfigPath:     stagedConfigPath,
+		StagedMetadataPath:   stagedMetadataPath,
+		StatePath:            statePath,
+	}, nil
+}
+
+func (s *Service) ActivateStagedConfigRevision(revision ConfigRevision, artifact ConfigArtifact) (ConfigArtifact, error) {
+	stateDir := strings.TrimSpace(s.identity.StateDir)
+	if stateDir == "" {
+		return ConfigArtifact{}, ErrStateDirRequired
+	}
+
+	activeDir := filepath.Join(stateDir, "active")
+	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+
+	configBody, err := os.ReadFile(artifact.StagedConfigPath)
+	if err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	if !json.Valid(configBody) {
+		return ConfigArtifact{}, ErrInvalidConfigPayload
+	}
+	metadataBody, err := os.ReadFile(artifact.StagedMetadataPath)
+	if err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	if !json.Valid(metadataBody) {
+		return ConfigArtifact{}, ErrInvalidConfigPayload
+	}
+
+	if artifact.ConfigPath == "" {
+		artifact.ConfigPath = filepath.Join(activeDir, "config.json")
+	}
+	if artifact.MetadataPath == "" {
+		artifact.MetadataPath = filepath.Join(activeDir, "metadata.json")
+	}
+	if artifact.StatePath == "" {
+		artifact.StatePath = filepath.Join(stateDir, "state.json")
+	}
+
+	if err := writeFileAtomic(artifact.MetadataPath, metadataBody, 0o600); err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	if err := writeFileAtomic(artifact.ConfigPath, configBody, 0o600); err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+
+	state := map[string]any{
+		"active_revision":             revision.RevisionNumber,
+		"staged_revision":             revision.RevisionNumber,
+		"last_applied_revision":       revision.RevisionNumber,
+		"rollback_candidate_revision": revision.RollbackTargetRevision,
+		"config_artifact_path":        artifact.ConfigPath,
+		"metadata_artifact_path":      artifact.MetadataPath,
+		"revision_config_path":        artifact.RevisionConfigPath,
+		"revision_metadata_path":      artifact.RevisionMetadataPath,
+		"operation_kind":              stringFromBundle(revision.Bundle, "operation_kind"),
+		"source_revision_id":          stringFromBundle(revision.Bundle, "source_revision_id"),
+		"source_revision_number":      numberFromBundle(revision.Bundle, "source_revision_number"),
+	}
+	stateBody, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return ConfigArtifact{}, err
+	}
+	stateBody = append(stateBody, '\n')
+	if err := writeFileAtomic(artifact.StatePath, stateBody, 0o600); err != nil {
+		return ConfigArtifact{}, fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+
+	return artifact, nil
 }
 
 func writeFileAtomic(path string, body []byte, perm os.FileMode) error {
@@ -362,7 +462,7 @@ func validateRenderedConfigPayload(revision ConfigRevision) error {
 		"generated_by":   "panel-api",
 		"protocol":       "vless-reality-xtls-vision",
 		"core_type":      "xray",
-		"config_kind":    "xray-config-skeleton",
+		"config_kind":    "xray-config-compatible-skeleton",
 	}
 	for key, expected := range requiredStrings {
 		value, ok := revision.Bundle[key].(string)
@@ -398,7 +498,20 @@ func validateRenderedConfigPayload(revision ConfigRevision) error {
 	if _, ok := config["routing"].(map[string]any); !ok {
 		return ErrInvalidConfigPayload
 	}
+	if _, ok := config["log"].(map[string]any); !ok {
+		return ErrInvalidConfigPayload
+	}
 	return nil
+}
+
+func stringFromBundle(bundle map[string]any, key string) string {
+	value, _ := bundle[key].(string)
+	return value
+}
+
+func numberFromBundle(bundle map[string]any, key string) int {
+	value, _ := numberAsInt(bundle[key])
+	return value
 }
 
 func numberAsInt(value any) (int, bool) {

@@ -549,6 +549,34 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/config-revisions/{revisionId}/rollback:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+      - name: revisionId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Applied config revision identifier to use as rollback source.
+    post:
+      tags: [Nodes]
+      summary: Create rollback config revision metadata
+      description: Admin endpoint. Creates a new pending revision from an applied target revision payload. The node-agent applies it through the normal polling path; panel-api does not mutate node files or restart Xray.
+      responses:
+        "201":
+          description: Rollback config revision metadata created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRevisionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/nodes/{id}/config-revisions/{revisionId}/report:
     parameters:
       - $ref: "#/components/parameters/ID"
@@ -1214,7 +1242,7 @@ components:
           minimum: 0
         bundle:
           type: object
-          description: Deterministic subscription-aware VLESS Reality Xray config skeleton payload with node metadata, subscription_inputs, access_entries, and rendered config object. It is not applied to a real Xray process by this foundation.
+          description: Deterministic subscription-aware VLESS Reality Xray-compatible skeleton payload with node metadata, operation_kind, optional rollback source metadata, subscription_inputs, access_entries, and rendered config object. It is not applied to a real Xray process by this foundation.
         created_at:
           type: string
           format: date-time
