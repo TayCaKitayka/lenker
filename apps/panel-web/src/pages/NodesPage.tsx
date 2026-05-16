@@ -632,7 +632,7 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
                       <td>{formatNodeTimestamp(revision.applied_at)}</td>
                       <td>{formatNodeTimestamp(revision.failed_at)}</td>
                       <td>{formatNodeTimestamp(revision.rolled_back_at)}</td>
-                      <td>{revision.error_message || "-"}</td>
+                      <td className={revision.error_message ? "revision-error-cell mono-cell" : undefined}>{revision.error_message || "-"}</td>
                       <td>
                         <div className="row-actions">
                           <button
@@ -679,12 +679,15 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
                 <DetailItem label="Rollback target" value={String(selectedRevision.rollback_target_revision)} />
                 <DetailItem label="Operation" value={readBundleString(selectedRevision.bundle, "operation_kind")} />
                 <DetailItem label="Source revision" value={readBundleNumber(selectedRevision.bundle, "source_revision_number")} />
+                <DetailItem label="Source revision ID" value={readBundleString(selectedRevision.bundle, "source_revision_id")} mono />
                 <DetailItem label="Created" value={formatNodeTimestamp(selectedRevision.created_at)} />
                 <DetailItem label="Applied" value={formatNodeTimestamp(selectedRevision.applied_at)} />
                 <DetailItem label="Failed" value={formatNodeTimestamp(selectedRevision.failed_at)} />
                 <DetailItem label="Rolled back" value={formatNodeTimestamp(selectedRevision.rolled_back_at)} />
                 <DetailItem label="Error" value={selectedRevision.error_message} />
               </dl>
+
+              {selectedRevision.status === "failed" ? <RevisionFailureBlock revision={selectedRevision} /> : null}
 
               <pre className="json-block">{formatConfigRevisionBundle(selectedRevision.bundle)}</pre>
             </div>
@@ -733,6 +736,37 @@ function DetailItem({ label, value, mono }: DetailItemProps) {
       <dt>{label}</dt>
       <dd className={mono ? "mono-cell" : undefined}>{value || "-"}</dd>
     </div>
+  );
+}
+
+interface RevisionFailureBlockProps {
+  revision: ConfigRevision;
+}
+
+function RevisionFailureBlock({ revision }: RevisionFailureBlockProps) {
+  const operation = readBundleString(revision.bundle, "operation_kind");
+  const sourceRevisionNumber = readBundleNumber(revision.bundle, "source_revision_number");
+  const sourceRevisionID = readBundleString(revision.bundle, "source_revision_id");
+
+  return (
+    <section className="revision-failure-panel" aria-label="Config revision failure details">
+      <div className="section-heading compact-heading">
+        <div>
+          <p className="eyebrow">Failure</p>
+          <h4>Apply validation failed</h4>
+        </div>
+        <span className={`status-badge ${configRevisionStatusClass(revision.status)}`}>{revision.status}</span>
+      </div>
+
+      <dl className="revision-failure-grid">
+        <DetailItem label="Error message" value={revision.error_message} mono />
+        <DetailItem label="Failed at" value={formatNodeTimestamp(revision.failed_at)} />
+        <DetailItem label="Operation" value={operation} />
+        <DetailItem label="Rollback target" value={String(revision.rollback_target_revision)} />
+        <DetailItem label="Source revision" value={sourceRevisionNumber} />
+        <DetailItem label="Source revision ID" value={sourceRevisionID} mono />
+      </dl>
+    </section>
   );
 }
 

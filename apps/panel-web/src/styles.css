@@ -563,6 +563,56 @@ select {
   border-top: 1px solid #e5ebf4;
 }
 
+.compact-heading {
+  margin-bottom: 12px;
+}
+
+.compact-heading h4 {
+  margin: 6px 0 0;
+  font-size: 18px;
+}
+
+.revision-error-cell {
+  max-width: 280px;
+  color: #991b1b;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.revision-failure-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #fecaca;
+  border-radius: 18px;
+  background: #fff7f7;
+}
+
+.revision-failure-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.revision-failure-grid div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.revision-failure-grid dt {
+  color: #7f1d1d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.revision-failure-grid dd {
+  margin: 6px 0 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .json-block {
   max-height: 360px;
   margin: 18px 0 0;
@@ -598,7 +648,8 @@ select {
   .cards-grid,
   .form-grid,
   .details-grid,
-  .node-detail-grid {
+  .node-detail-grid,
+  .revision-failure-grid {
     grid-template-columns: 1fr;
   }
 
