@@ -7,7 +7,7 @@ interface LoginResponse {
 }
 
 interface UserListResponse {
-  data: User[];
+  data?: User[] | null;
 }
 
 interface UserResponse {
@@ -15,7 +15,7 @@ interface UserResponse {
 }
 
 interface PlanListResponse {
-  data: Plan[];
+  data?: Plan[] | null;
 }
 
 interface PlanResponse {
@@ -23,7 +23,7 @@ interface PlanResponse {
 }
 
 interface SubscriptionListResponse {
-  data: Subscription[];
+  data?: Subscription[] | null;
 }
 
 interface SubscriptionResponse {
@@ -152,7 +152,7 @@ export async function loginAdmin(email: string, password: string): Promise<Store
 
 export async function listUsers(session: StoredSession): Promise<User[]> {
   const payload = await authorizedRequest<UserListResponse>(session, "/api/v1/users");
-  return payload.data;
+  return readListData(payload, "users");
 }
 
 export async function createUser(session: StoredSession, input: CreateUserInput): Promise<User> {
@@ -187,7 +187,7 @@ export async function activateUser(session: StoredSession, userID: string): Prom
 
 export async function listPlans(session: StoredSession): Promise<Plan[]> {
   const payload = await authorizedRequest<PlanListResponse>(session, "/api/v1/plans");
-  return payload.data;
+  return readListData(payload, "plans");
 }
 
 export async function createPlan(session: StoredSession, input: CreatePlanInput): Promise<Plan> {
@@ -215,7 +215,7 @@ export async function archivePlan(session: StoredSession, planID: string): Promi
 
 export async function listSubscriptions(session: StoredSession): Promise<Subscription[]> {
   const payload = await authorizedRequest<SubscriptionListResponse>(session, "/api/v1/subscriptions");
-  return payload.data;
+  return readListData(payload, "subscriptions");
 }
 
 export async function createSubscription(session: StoredSession, input: CreateSubscriptionInput): Promise<Subscription> {
@@ -298,4 +298,16 @@ function throwPanelApiError(response: Response, payload: unknown, fallbackMessag
     errorPayload?.error?.code || "request_failed",
     response.status,
   );
+}
+
+function readListData<TItem>(payload: { data?: TItem[] | null }, resourceName: string): TItem[] {
+  if (payload.data === null) {
+    return [];
+  }
+
+  if (Array.isArray(payload.data)) {
+    return payload.data;
+  }
+
+  throw new PanelApiError(`Unexpected ${resourceName} response`, "invalid_response", 200);
 }
