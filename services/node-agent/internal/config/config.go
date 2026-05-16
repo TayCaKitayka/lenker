@@ -9,19 +9,24 @@ import (
 )
 
 type Config struct {
-	HTTPAddr          string
-	NodeID            string
-	BootstrapToken    string
-	NodeToken         string
-	PanelURL          string
-	StateDir          string
-	LogLevel          string
-	HeartbeatInterval time.Duration
-	TLSEnabled        bool
+	HTTPAddr           string
+	NodeID             string
+	BootstrapToken     string
+	NodeToken          string
+	PanelURL           string
+	StateDir           string
+	LogLevel           string
+	HeartbeatInterval  time.Duration
+	ConfigPollInterval time.Duration
+	TLSEnabled         bool
 }
 
 func Load() (Config, error) {
 	heartbeatInterval, err := durationFromEnv("LENKER_AGENT_HEARTBEAT_INTERVAL", 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	configPollInterval, err := durationFromEnv("LENKER_AGENT_CONFIG_POLL_INTERVAL", 30*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -32,19 +37,23 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		HTTPAddr:          stringFromEnv("LENKER_AGENT_HTTP_ADDR", ":8090"),
-		NodeID:            strings.TrimSpace(os.Getenv("LENKER_AGENT_NODE_ID")),
-		BootstrapToken:    strings.TrimSpace(os.Getenv("LENKER_AGENT_BOOTSTRAP_TOKEN")),
-		NodeToken:         strings.TrimSpace(os.Getenv("LENKER_AGENT_NODE_TOKEN")),
-		PanelURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("LENKER_AGENT_PANEL_URL")), "/"),
-		StateDir:          stringFromEnv("LENKER_AGENT_STATE_DIR", ".lenker-node-agent"),
-		LogLevel:          stringFromEnv("LENKER_AGENT_LOG_LEVEL", "info"),
-		HeartbeatInterval: heartbeatInterval,
-		TLSEnabled:        tlsEnabled,
+		HTTPAddr:           stringFromEnv("LENKER_AGENT_HTTP_ADDR", ":8090"),
+		NodeID:             strings.TrimSpace(os.Getenv("LENKER_AGENT_NODE_ID")),
+		BootstrapToken:     strings.TrimSpace(os.Getenv("LENKER_AGENT_BOOTSTRAP_TOKEN")),
+		NodeToken:          strings.TrimSpace(os.Getenv("LENKER_AGENT_NODE_TOKEN")),
+		PanelURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("LENKER_AGENT_PANEL_URL")), "/"),
+		StateDir:           stringFromEnv("LENKER_AGENT_STATE_DIR", ".lenker-node-agent"),
+		LogLevel:           stringFromEnv("LENKER_AGENT_LOG_LEVEL", "info"),
+		HeartbeatInterval:  heartbeatInterval,
+		ConfigPollInterval: configPollInterval,
+		TLSEnabled:         tlsEnabled,
 	}
 
 	if cfg.HeartbeatInterval <= 0 {
 		return Config{}, errors.New("LENKER_AGENT_HEARTBEAT_INTERVAL must be positive")
+	}
+	if cfg.ConfigPollInterval <= 0 {
+		return Config{}, errors.New("LENKER_AGENT_CONFIG_POLL_INTERVAL must be positive")
 	}
 
 	return cfg, nil

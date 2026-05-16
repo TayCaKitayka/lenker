@@ -528,6 +528,124 @@ func TestGetPendingConfigRevisionNotFound(t *testing.T) {
 	}
 }
 
+func TestReportConfigRevisionApplied(t *testing.T) {
+	appliedRevision := testConfigRevision("revision-1", "node-1", 4)
+	appliedRevision.Status = "applied"
+	repo := &fakeNodesRepository{reportedRevision: appliedRevision}
+	handler := NewHandler(nil, repo, nil)
+	appliedAt := "2026-05-16T01:02:03Z"
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions/revision-1/report", strings.NewReader(`{
+		"status": "applied",
+		"applied_at": "`+appliedAt+`",
+		"active_revision": 4
+	}`))
+	request.SetPathValue("id", "node-1")
+	request.SetPathValue("revisionId", "revision-1")
+	request.Header.Set("Authorization", "Bearer node-token")
+	response := httptest.NewRecorder()
+
+	handler.ReportConfigRevision(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.reportedRevisionInput.NodeID != "node-1" || repo.reportedRevisionInput.NodeToken != "node-token" || repo.reportedRevisionInput.RevisionID != "revision-1" {
+		t.Fatalf("unexpected report input: %#v", repo.reportedRevisionInput)
+	}
+	if repo.reportedRevisionInput.Status != "applied" || repo.reportedRevisionInput.AppliedAt.IsZero() {
+		t.Fatalf("expected applied report input: %#v", repo.reportedRevisionInput)
+	}
+	if !strings.Contains(response.Body.String(), `"status":"applied"`) {
+		t.Fatalf("expected revision response: %s", response.Body.String())
+	}
+}
+
+func TestReportConfigRevisionFailed(t *testing.T) {
+	failedRevision := testConfigRevision("revision-1", "node-1", 4)
+	failedRevision.Status = "failed"
+	failedRevision.ErrorMessage = "invalid config bundle signature"
+	repo := &fakeNodesRepository{reportedRevision: failedRevision}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions/revision-1/report", strings.NewReader(`{
+		"status": "failed",
+		"error_message": "invalid config bundle signature"
+	}`))
+	request.SetPathValue("id", "node-1")
+	request.SetPathValue("revisionId", "revision-1")
+	request.Header.Set("Authorization", "Bearer node-token")
+	response := httptest.NewRecorder()
+
+	handler.ReportConfigRevision(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.reportedRevisionInput.Status != "failed" || repo.reportedRevisionInput.ErrorMessage != "invalid config bundle signature" {
+		t.Fatalf("expected failed report input: %#v", repo.reportedRevisionInput)
+	}
+	if !strings.Contains(response.Body.String(), `"error_message":"invalid config bundle signature"`) {
+		t.Fatalf("expected failed revision response: %s", response.Body.String())
+	}
+}
+
+func TestReportConfigRevisionRequiresBearer(t *testing.T) {
+	repo := &fakeNodesRepository{}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions/revision-1/report", strings.NewReader(`{"status":"applied"}`))
+	request.SetPathValue("id", "node-1")
+	request.SetPathValue("revisionId", "revision-1")
+	response := httptest.NewRecorder()
+
+	handler.ReportConfigRevision(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.reportedRevisionInput.NodeID != "" {
+		t.Fatalf("report should not be called without bearer token")
+	}
+}
+
+func TestReportConfigRevisionRejectsInvalidStatus(t *testing.T) {
+	repo := &fakeNodesRepository{}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions/revision-1/report", strings.NewReader(`{"status":"rolled_back"}`))
+	request.SetPathValue("id", "node-1")
+	request.SetPathValue("revisionId", "revision-1")
+	request.Header.Set("Authorization", "Bearer node-token")
+	response := httptest.NewRecorder()
+
+	handler.ReportConfigRevision(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.reportedRevisionInput.NodeID != "" {
+		t.Fatalf("report should not be called for invalid status")
+	}
+}
+
+func TestReportConfigRevisionRejectsWrongNodeOrDisabledNode(t *testing.T) {
+	repo := &fakeNodesRepository{reportRevisionErr: storage.ErrNotFound}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-2/config-revisions/revision-1/report", strings.NewReader(`{"status":"applied"}`))
+	request.SetPathValue("id", "node-2")
+	request.SetPathValue("revisionId", "revision-1")
+	request.Header.Set("Authorization", "Bearer node-1-token")
+	response := httptest.NewRecorder()
+
+	handler.ReportConfigRevision(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func testRegisterTokenError(t *testing.T, err error, expectedStatus int, expectedCode string) {
 	t.Helper()
 
@@ -577,6 +695,9 @@ type fakeNodesRepository struct {
 	pendingRevisionNodeID    string
 	pendingRevisionNodeToken string
 	pendingRevisionErr       error
+	reportedRevisionInput    storage.ReportConfigRevisionInput
+	reportedRevision         storage.ConfigRevision
+	reportRevisionErr        error
 }
 
 func (r *fakeNodesRepository) List(ctx context.Context) ([]storage.Node, error) {
@@ -697,6 +818,19 @@ func (r *fakeNodesRepository) FindLatestPendingConfigRevision(ctx context.Contex
 		return r.pendingRevision, nil
 	}
 	return testConfigRevision("revision-1", nodeID, 1), nil
+}
+
+func (r *fakeNodesRepository) ReportConfigRevision(ctx context.Context, input storage.ReportConfigRevisionInput) (storage.ConfigRevision, error) {
+	r.reportedRevisionInput = input
+	if r.reportRevisionErr != nil {
+		return storage.ConfigRevision{}, r.reportRevisionErr
+	}
+	if r.reportedRevision.ID != "" {
+		return r.reportedRevision, nil
+	}
+	revision := testConfigRevision(input.RevisionID, input.NodeID, 1)
+	revision.Status = input.Status
+	return revision, nil
 }
 
 func (r *fakeNodesRepository) lifecycle(action string, id string, update func(storage.Node) storage.Node) (storage.Node, error) {

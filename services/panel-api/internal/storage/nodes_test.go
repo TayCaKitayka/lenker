@@ -6,17 +6,17 @@ import (
 	"time"
 
 	"github.com/lenker/lenker/services/panel-api/internal/configbundle"
+	"github.com/lenker/lenker/services/panel-api/internal/configrender"
 )
 
 func TestScanConfigRevisionReturnsSignedPayloadAsBundle(t *testing.T) {
-	payload := map[string]any{
-		"kind":            "dummy",
-		"protocol":        "vless-reality-xtls-vision",
-		"xray_runtime":    false,
-		"generated_by":    "panel-api",
-		"schema_version":  "config-bundle.v1alpha1",
-		"revision_number": float64(1),
-	}
+	payload := configrender.RenderVLESSRealityPayload(configrender.RenderInput{
+		NodeID:         "node-1",
+		RevisionNumber: 1,
+		Hostname:       "node-1.example.com",
+		Region:         "eu",
+		CountryCode:    "FI",
+	})
 	hash, err := configbundle.HashPayload(payload)
 	if err != nil {
 		t.Fatalf("expected payload hash: %v", err)
@@ -63,7 +63,10 @@ func TestScanConfigRevisionReturnsSignedPayloadAsBundle(t *testing.T) {
 		t.Fatalf("response bundle must be payload only, got %#v", revision.Bundle)
 	}
 	if revision.Bundle["protocol"] != "vless-reality-xtls-vision" {
-		t.Fatalf("expected dummy payload in response bundle, got %#v", revision.Bundle)
+		t.Fatalf("expected config payload in response bundle, got %#v", revision.Bundle)
+	}
+	if revision.Bundle["config_kind"] != "xray-config-skeleton" {
+		t.Fatalf("expected xray skeleton payload in response bundle, got %#v", revision.Bundle)
 	}
 	responseHash, err := configbundle.HashPayload(revision.Bundle)
 	if err != nil {

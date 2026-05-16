@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ var (
 
 type PendingConfigRevisionClient interface {
 	FetchPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, bool, error)
+	ReportConfigRevision(ctx context.Context, nodeID string, nodeToken string, revisionID string, report ConfigRevisionReport) error
 }
 
 type PanelClient struct {
@@ -83,4 +85,64 @@ func (c PanelClient) FetchPendingConfigRevision(ctx context.Context, nodeID stri
 	}
 
 	return *envelope.Data, true, nil
+}
+
+func (c PanelClient) ReportConfigRevision(ctx context.Context, nodeID string, nodeToken string, revisionID string, report ConfigRevisionReport) error {
+	if strings.TrimSpace(nodeID) == "" {
+		return ErrNodeIDRequired
+	}
+	if strings.TrimSpace(nodeToken) == "" {
+		return ErrNodeTokenRequired
+	}
+	if strings.TrimSpace(revisionID) == "" {
+		return ErrInvalidConfigRevision
+	}
+
+	baseURL := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
+	if baseURL == "" {
+		return ErrPanelURLRequired
+	}
+
+	body, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf(
+			"%s/api/v1/nodes/%s/config-revisions/%s/report",
+			baseURL,
+			url.PathEscape(nodeID),
+			url.PathEscape(revisionID),
+		),
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+nodeToken)
+	request.Header.Set("Content-Type", "application/json")
+
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	switch response.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return ErrPendingRevisionAuth
+	case http.StatusNotFound:
+		return ErrInvalidConfigRevision
+	default:
+		return fmt.Errorf("%w: status %d", ErrUnexpectedPanelResponse, response.StatusCode)
+	}
 }

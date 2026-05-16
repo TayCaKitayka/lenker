@@ -36,6 +36,7 @@ Configuration:
 - `LENKER_AGENT_STATE_DIR`
 - `LENKER_AGENT_LOG_LEVEL`
 - `LENKER_AGENT_HEARTBEAT_INTERVAL`
+- `LENKER_AGENT_CONFIG_POLL_INTERVAL`
 - `LENKER_AGENT_TLS_ENABLED`
 
 Local run:
@@ -62,6 +63,7 @@ Panel contract currently implemented:
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
 - `GET /api/v1/nodes/{id}/config-revisions/pending`
+- `POST /api/v1/nodes/{id}/config-revisions/{revisionId}/report`
 
 Registration payload:
 
@@ -100,22 +102,20 @@ Conservative note:
 certificate rotation, and production network retry policy are intentionally not
 implemented in this step.
 
-Stage C note:
-
-The agent validates and stores signed config bundle metadata only. It verifies
-the dummy bundle hash and deterministic development signature, keeps metadata in
-memory, and tracks active/rollback revision numbers. It does not write Xray
-config files, apply configs, restart processes, or execute rollback.
-
-Config delivery metadata foundation:
+Config delivery/apply foundation:
 
 The agent has a small panel client for fetching the latest pending signed
-revision metadata with `Authorization: Bearer <node_token>`. A fetch/apply
-metadata service method treats `404 not_found` as no-op, rejects unauthorized or
-malformed responses, validates the bundle hash and deterministic dev signature,
-stores metadata in memory, and updates the active/applied revision in status and
-heartbeat payloads. This apply step is metadata-only and does not touch the
-filesystem, Xray config files, OS processes, or rollback execution.
+revision metadata with `Authorization: Bearer <node_token>`. A polling loop runs
+on `LENKER_AGENT_CONFIG_POLL_INTERVAL`, treats `404 not_found` as no-op, rejects
+unauthorized or malformed responses, validates the bundle hash and deterministic
+dev signature, verifies the deterministic VLESS Reality Xray config skeleton
+payload shape, stores metadata in memory, and updates the active/applied
+revision in status and heartbeat payloads.
+
+After validation, the agent reports `applied` to panel-api. Validation failures
+such as bad hash, bad signature, or malformed payload are reported as `failed`
+with a concise `error_message`. This apply step is metadata-only and does not
+touch the filesystem, Xray config files, OS processes, or rollback execution.
 
 Not included here yet:
 

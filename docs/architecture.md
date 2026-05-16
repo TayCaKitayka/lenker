@@ -154,16 +154,16 @@ node registration, heartbeat endpoints, and node-agent local health/status
 endpoints. The panel stores only bootstrap token hashes, expires tokens, and
 marks tokens used after successful registration. Full mTLS establishment,
 certificate rotation, Xray process control, and rollback execution are still
-skeleton work. Stage C stores signed config bundle metadata and revision
-history only; it does not generate real Xray config, apply config, restart
-processes, or execute rollback.
+skeleton work.
 
-The delivery foundation adds a node-facing endpoint for fetching the latest
-pending signed revision metadata with the node Bearer token. The node-agent can
-fetch, verify hash/signature, store metadata in memory, and send the applied
-revision number in heartbeat payloads. This remains a metadata-only path: no
-Xray JSON generation, file writes, process control, or rollback executor are
-implemented by this layer.
+The config delivery foundation creates deterministic signed VLESS Reality Xray
+config skeleton payloads for the single MVP path. A node-facing endpoint lets
+the node-agent fetch the latest pending signed revision with the node Bearer
+token. The node-agent polling loop fetches pending revisions, verifies
+hash/signature and payload shape, stores metadata in memory, and reports
+`applied` or `failed` status back to the panel. This remains a skeleton apply
+path: no runtime config files are written, no Xray process is controlled, and
+no rollback executor is implemented by this layer.
 
 ### Boundary 3: User App to Panel
 

@@ -467,7 +467,7 @@ paths:
     get:
       tags: [Nodes]
       summary: List node config revisions
-      description: Returns signed config bundle metadata only. Stage C does not generate or apply real Xray config.
+      description: Returns signed deterministic config payload metadata. This foundation does not control the Xray runtime.
       responses:
         "200":
           description: Config revisions list.
@@ -483,8 +483,8 @@ paths:
           $ref: "#/components/responses/InternalError"
     post:
       tags: [Nodes]
-      summary: Create dummy signed config revision metadata
-      description: Creates metadata for a signed dummy bundle. It does not generate Xray config, apply config, restart processes, or execute rollback.
+      summary: Create signed config revision metadata
+      description: Creates metadata for a deterministic VLESS Reality Xray config skeleton payload. It does not apply config, restart processes, or execute rollback.
       responses:
         "201":
           description: Config revision metadata created.
@@ -506,7 +506,7 @@ paths:
     get:
       tags: [Nodes]
       summary: Fetch latest pending config revision metadata for a node
-      description: Node-agent endpoint. Requires the node Bearer token and returns only the latest pending signed dummy bundle metadata for the node in the path. It does not apply config or control Xray.
+      description: Node-agent endpoint. Requires the node Bearer token and returns only the latest pending signed config payload metadata for the node in the path. It does not apply config or control Xray.
       responses:
         "200":
           description: Latest pending config revision metadata.
@@ -543,6 +543,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConfigRevisionEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/config-revisions/{revisionId}/report:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+      - name: revisionId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Config revision identifier.
+    post:
+      tags: [Nodes]
+      summary: Report node config revision apply status
+      description: Node-agent endpoint. Requires the node Bearer token and records applied or failed metadata status for a pending revision owned by the node. It does not execute rollback or control Xray.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigRevisionReportRequest"
+      responses:
+        "200":
+          description: Config revision status recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRevisionEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1169,10 +1203,10 @@ components:
           enum: [pending, applied, failed, rolled_back]
         bundle_hash:
           type: string
-          description: Stable hash of the dummy bundle metadata payload.
+          description: Stable hash of the deterministic config payload.
         signature:
           type: string
-          description: Deterministic development signature for the Stage C foundation.
+          description: Deterministic development signature for the MVP config delivery foundation.
         signer:
           type: string
         rollback_target_revision:
@@ -1180,7 +1214,7 @@ components:
           minimum: 0
         bundle:
           type: object
-          description: Dummy signed bundle metadata. It is not a real Xray config blob.
+          description: Deterministic VLESS Reality Xray config skeleton payload. It is not applied to a real Xray process by this foundation.
         created_at:
           type: string
           format: date-time
@@ -1198,6 +1232,31 @@ components:
           nullable: true
         error_message:
           type: string
+          nullable: true
+    ConfigRevisionReportRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [applied, failed]
+        applied_at:
+          type: string
+          format: date-time
+          nullable: true
+        failed_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        active_revision:
+          type: integer
+          minimum: 0
+        sent_at:
+          type: string
+          format: date-time
           nullable: true
     ConfigRevisionEnvelope:
       allOf:

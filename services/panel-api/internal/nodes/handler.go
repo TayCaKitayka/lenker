@@ -49,6 +49,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/nodes/register", h.Register)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", h.Heartbeat)
 	mux.HandleFunc("GET /api/v1/nodes/{id}/config-revisions/pending", h.GetPendingConfigRevision)
+	mux.HandleFunc("POST /api/v1/nodes/{id}/config-revisions/{revisionId}/report", h.ReportConfigRevision)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -372,6 +373,76 @@ func (h *Handler) GetPendingConfigRevision(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.recordNode(r, audit.ActionNodeConfigRevisionFetch, nodeID, audit.OutcomeSuccess, "")
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: configRevisionResponse(revision)})
+}
+
+func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
+	nodeToken, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		httpapi.WriteUnauthorized(w)
+		return
+	}
+
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	revisionID := strings.TrimSpace(r.PathValue("revisionId"))
+	if nodeID == "" {
+		httpapi.WriteBadRequest(w, "node id is required")
+		return
+	}
+	if revisionID == "" {
+		httpapi.WriteBadRequest(w, "revision id is required")
+		return
+	}
+
+	var request struct {
+		Status         string    `json:"status"`
+		AppliedAt      time.Time `json:"applied_at"`
+		FailedAt       time.Time `json:"failed_at"`
+		ErrorMessage   string    `json:"error_message"`
+		ActiveRevision int       `json:"active_revision"`
+		SentAt         time.Time `json:"sent_at"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		httpapi.WriteBadRequest(w, "invalid JSON request body")
+		return
+	}
+
+	status := strings.TrimSpace(request.Status)
+	if status != "applied" && status != "failed" {
+		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "status must be applied or failed")
+		return
+	}
+
+	revision, err := h.nodes.ReportConfigRevision(r.Context(), storage.ReportConfigRevisionInput{
+		NodeID:       nodeID,
+		NodeToken:    nodeToken,
+		RevisionID:   revisionID,
+		Status:       status,
+		AppliedAt:    request.AppliedAt,
+		FailedAt:     request.FailedAt,
+		ErrorMessage: strings.TrimSpace(request.ErrorMessage),
+		SentAt:       request.SentAt,
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			h.recordNode(r, audit.ActionNodeConfigRevisionReport, nodeID, audit.OutcomeFailure, "not_found")
+			httpapi.WriteNotFound(w, "config revision")
+			return
+		}
+		if errors.Is(err, storage.ErrInvalidNodeTransition) {
+			h.recordNode(r, audit.ActionNodeConfigRevisionReport, nodeID, audit.OutcomeFailure, "validation_error")
+			httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "invalid config revision status report")
+			return
+		}
+		if h.logger != nil {
+			h.logger.Error("config revision report failed", "error", err)
+		}
+		h.recordNode(r, audit.ActionNodeConfigRevisionReport, nodeID, audit.OutcomeFailure, "storage_error")
+		httpapi.WriteStorageError(w)
+		return
+	}
+
+	h.recordNode(r, audit.ActionNodeConfigRevisionReport, nodeID, audit.OutcomeSuccess, status)
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: configRevisionResponse(revision)})
 }
 

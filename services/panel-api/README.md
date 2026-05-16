@@ -30,7 +30,7 @@ Current foundation:
 - admin-created one-time node bootstrap tokens
 - node registration with token expiry and one-time token consumption
 - node heartbeat status and `last_seen_at` updates
-- config revision metadata storage with deterministic signed dummy bundle metadata
+- config revision metadata storage with deterministic signed VLESS Reality Xray config skeleton payloads
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -80,6 +80,7 @@ Implemented foundation routes:
 - `GET /api/v1/nodes/{id}/config-revisions`
 - `GET /api/v1/nodes/{id}/config-revisions/pending`
 - `GET /api/v1/nodes/{id}/config-revisions/{revisionId}`
+- `POST /api/v1/nodes/{id}/config-revisions/{revisionId}/report`
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
 
@@ -104,6 +105,7 @@ Node-agent contract routes:
 - `POST /api/v1/nodes/register` accepts a one-time bootstrap token and returns a node token
 - `POST /api/v1/nodes/{id}/heartbeat` accepts a node heartbeat with `Authorization: Bearer <node_token>`
 - `GET /api/v1/nodes/{id}/config-revisions/pending` accepts the same node token and returns latest pending signed revision metadata for that node
+- `POST /api/v1/nodes/{id}/config-revisions/{revisionId}/report` accepts the same node token and records `applied` or `failed` revision status
 
 Use the token returned by admin login:
 
@@ -128,8 +130,7 @@ Not included here yet:
 - devices, key rotation, and export flows
 - full node orchestration engine
 - full mTLS or certificate rotation
-- real Xray config generation
-- config delivery, Xray apply, process restart, or rollback executor
+- real Xray process restart/control or rollback executor
 - billing
 - marketplace
 - VPN or Xray logic
@@ -334,11 +335,11 @@ Conservative lifecycle behavior:
 
 ## Config Revision Metadata
 
-Stage C stores signed bundle metadata only. It creates deterministic dummy
-bundle metadata for the single MVP protocol path and records revision number,
-status, bundle hash, signature, signer, rollback target metadata, and
-timestamps. It does not generate real Xray config, apply config, restart Xray,
-or execute rollback.
+The config foundation creates deterministic VLESS Reality Xray config skeleton
+payloads for the single MVP protocol path and records revision number, status,
+bundle hash, signature, signer, rollback target metadata, and timestamps. This
+payload is structured and hash/signature stable, but it is not written to an
+Xray config file and does not restart or control Xray.
 
 Create a config revision metadata record:
 
@@ -369,8 +370,30 @@ curl -s http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/pending \
 ```
 
 The endpoint returns `not_found` when there is no pending revision, the token
-does not match the node, or the node is disabled. It does not apply config,
-generate real Xray JSON, restart processes, or execute rollback.
+does not match the node, or the node is disabled.
+
+Node-agent reports metadata apply status through the node-facing report
+endpoint:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<revision_id>/report \
+  -H "Authorization: Bearer <node_token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"applied","active_revision":1}'
+```
+
+Failed metadata validation can be reported as:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<revision_id>/report \
+  -H "Authorization: Bearer <node_token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"failed","error_message":"invalid config payload"}'
+```
+
+Applied reports update revision status and node `active_revision`. Failed
+reports persist `failed_at` and `error_message`. The report path does not
+execute rollback, restart processes, or control Xray.
 
 Manual smoke checklist:
 

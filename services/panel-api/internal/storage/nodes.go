@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/lenker/lenker/services/panel-api/internal/configbundle"
+	"github.com/lenker/lenker/services/panel-api/internal/configrender"
 )
 
 var (
@@ -99,6 +100,17 @@ type CreateDummyConfigRevisionInput struct {
 	CreatedByAdminID string
 }
 
+type ReportConfigRevisionInput struct {
+	NodeID       string
+	NodeToken    string
+	RevisionID   string
+	Status       string
+	AppliedAt    time.Time
+	FailedAt     time.Time
+	ErrorMessage string
+	SentAt       time.Time
+}
+
 type NodesRepository interface {
 	List(ctx context.Context) ([]Node, error)
 	FindByID(ctx context.Context, id string) (Node, error)
@@ -113,6 +125,7 @@ type NodesRepository interface {
 	ListConfigRevisions(ctx context.Context, nodeID string) ([]ConfigRevision, error)
 	FindConfigRevision(ctx context.Context, nodeID string, revisionID string) (ConfigRevision, error)
 	FindLatestPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, error)
+	ReportConfigRevision(ctx context.Context, input ReportConfigRevisionInput) (ConfigRevision, error)
 }
 
 type nodesRepository struct {
@@ -469,14 +482,25 @@ func (r *nodesRepository) CreateDummyConfigRevision(ctx context.Context, input C
 		return ConfigRevision{}, err
 	}
 
-	payload := map[string]any{
-		"kind":            "dummy",
-		"protocol":        "vless-reality-xtls-vision",
-		"xray_runtime":    false,
-		"generated_by":    "panel-api",
-		"schema_version":  "config-bundle.v1alpha1",
-		"revision_number": nextRevision,
+	var hostname string
+	var region string
+	var countryCode string
+	err = tx.QueryRowContext(ctx, `
+		SELECT hostname, region, country_code
+		FROM nodes
+		WHERE id = $1
+	`, input.NodeID).Scan(&hostname, &region, &countryCode)
+	if err != nil {
+		return ConfigRevision{}, err
 	}
+
+	payload := configrender.RenderVLESSRealityPayload(configrender.RenderInput{
+		NodeID:         input.NodeID,
+		RevisionNumber: nextRevision,
+		Hostname:       hostname,
+		Region:         region,
+		CountryCode:    countryCode,
+	})
 	bundleHash, err := configbundle.HashPayload(payload)
 	if err != nil {
 		return ConfigRevision{}, err
@@ -593,6 +617,95 @@ func (r *nodesRepository) FindLatestPendingConfigRevision(ctx context.Context, n
 		if errors.Is(err, sql.ErrNoRows) {
 			return ConfigRevision{}, ErrNotFound
 		}
+		return ConfigRevision{}, err
+	}
+	return revision, nil
+}
+
+func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input ReportConfigRevisionInput) (ConfigRevision, error) {
+	if input.Status != "applied" && input.Status != "failed" {
+		return ConfigRevision{}, ErrInvalidNodeTransition
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ConfigRevision{}, err
+	}
+	defer tx.Rollback()
+
+	var reportedAt time.Time
+	if input.Status == "applied" {
+		reportedAt = input.AppliedAt
+	} else {
+		reportedAt = input.FailedAt
+	}
+	if reportedAt.IsZero() {
+		reportedAt = input.SentAt
+	}
+	if reportedAt.IsZero() {
+		reportedAt = time.Now().UTC()
+	}
+	reportedAt = reportedAt.UTC()
+
+	var revision ConfigRevision
+	if input.Status == "applied" {
+		revision, err = scanConfigRevision(tx.QueryRowContext(ctx, `
+			UPDATE config_revisions cr
+			SET status = 'applied',
+			    applied_at = $4,
+			    failed_at = NULL,
+			    error_message = NULL,
+			    updated_at = $4
+			FROM nodes n
+			WHERE cr.node_id = n.id
+			  AND cr.node_id = $1
+			  AND cr.id = $2
+			  AND n.auth_token_hash = $3
+			  AND n.registered_at IS NOT NULL
+			  AND n.status != 'disabled'
+			  AND cr.status = 'pending'
+			RETURNING cr.id::text, cr.node_id::text, cr.revision_number, cr.bundle_hash, cr.signature, cr.signer, cr.status, cr.rollback_target_revision, cr.bundle_json, cr.created_at, cr.applied_at, cr.failed_at, cr.rolled_back_at, cr.error_message
+		`, input.NodeID, input.RevisionID, HashNodeToken(input.NodeToken), reportedAt))
+	} else {
+		revision, err = scanConfigRevision(tx.QueryRowContext(ctx, `
+			UPDATE config_revisions cr
+			SET status = 'failed',
+			    failed_at = $4,
+			    error_message = NULLIF($5, ''),
+			    updated_at = $4
+			FROM nodes n
+			WHERE cr.node_id = n.id
+			  AND cr.node_id = $1
+			  AND cr.id = $2
+			  AND n.auth_token_hash = $3
+			  AND n.registered_at IS NOT NULL
+			  AND n.status != 'disabled'
+			  AND cr.status = 'pending'
+			RETURNING cr.id::text, cr.node_id::text, cr.revision_number, cr.bundle_hash, cr.signature, cr.signer, cr.status, cr.rollback_target_revision, cr.bundle_json, cr.created_at, cr.applied_at, cr.failed_at, cr.rolled_back_at, cr.error_message
+		`, input.NodeID, input.RevisionID, HashNodeToken(input.NodeToken), reportedAt, input.ErrorMessage))
+	}
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ConfigRevision{}, ErrNotFound
+		}
+		return ConfigRevision{}, err
+	}
+
+	if input.Status == "applied" {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE nodes
+			SET active_revision = $2,
+			    updated_at = $3
+			WHERE id = $1
+			  AND auth_token_hash = $4
+			  AND registered_at IS NOT NULL
+			  AND status != 'disabled'
+		`, input.NodeID, revision.RevisionNumber, reportedAt, HashNodeToken(input.NodeToken)); err != nil {
+			return ConfigRevision{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
 		return ConfigRevision{}, err
 	}
 	return revision, nil

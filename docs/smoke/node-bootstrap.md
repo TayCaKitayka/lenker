@@ -1,9 +1,10 @@
 # Node Bootstrap Smoke Checklist
 
-This checklist verifies the local node bootstrap, registration, heartbeat, and
-admin node lifecycle flow. It is for local development only.
+This checklist verifies the local node bootstrap, registration, heartbeat,
+admin node lifecycle, and config revision report flow. It is for local
+development only.
 
-It does not verify mTLS, Xray runtime, config deployment, rollback, metrics, or
+It does not verify mTLS, Xray runtime process control, rollback, metrics, or
 traffic handling.
 
 ## Prerequisites
@@ -153,9 +154,9 @@ Expected result:
 - details include `status`, `drain_state`, `last_seen_at`, `registered_at`,
   `agent_version`, and `active_revision_id`.
 
-## 9. Create And Fetch Pending Config Revision Metadata
+## 9. Create, Fetch, And Report Config Revision Metadata
 
-Create signed dummy config revision metadata as an admin:
+Create signed config revision metadata as an admin:
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions \
@@ -167,7 +168,8 @@ Expected result:
 - response contains `data.revision_number`;
 - response contains `data.bundle_hash`, `data.signature`, `data.signer`, and
   `data.bundle`;
-- this is dummy metadata only, not real Xray config.
+- `data.bundle` contains a deterministic VLESS Reality Xray config skeleton
+  payload for the single MVP path.
 
 Fetch the latest pending revision as the node-agent:
 
@@ -183,9 +185,37 @@ Expected result:
 - if no pending revision exists, the endpoint returns `not_found`.
 
 The node-agent unit tests verify that the fetched metadata can be hash/signature
-validated, stored in memory, and reflected in the heartbeat active revision
-payload. This smoke path still does not write Xray config files, restart
-processes, or execute rollback.
+validated, checked for the expected config skeleton payload shape, stored in
+memory, and reflected in the heartbeat active revision payload.
+
+Report the pending revision as applied:
+
+```sh
+export LENKER_REVISION_ID='<revision_id>'
+
+curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions/$LENKER_REVISION_ID/report \
+  -H "Authorization: Bearer $LENKER_NODE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"applied","active_revision":1}'
+```
+
+Expected result:
+
+- `data.status` is `applied`;
+- `data.applied_at` is set;
+- a later admin config revision fetch shows the applied status.
+
+Validation failures can be reported as failed:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions/$LENKER_REVISION_ID/report \
+  -H "Authorization: Bearer $LENKER_NODE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"failed","error_message":"invalid config payload"}'
+```
+
+This smoke path still does not write Xray config files, restart processes, or
+execute rollback.
 
 After metadata apply in the agent skeleton, heartbeat can report the applied
 revision number:

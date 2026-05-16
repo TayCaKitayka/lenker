@@ -274,13 +274,13 @@ successful heartbeat proves the node is active.
 
 Generate and deploy the next signed config revision.
 
-Current Stage C implementation note:
+Current implementation note:
 
 The implemented foundation uses `POST /nodes/{nodeId}/config-revisions` to
-create signed dummy bundle metadata only. It stores revision number, status,
-bundle hash, signature, signer, rollback target metadata, and timestamps. It
-does not generate real Xray config, deliver config to an agent, apply config,
-restart processes, or execute rollback.
+create deterministic signed VLESS Reality Xray config skeleton payloads for the
+single MVP path. It stores revision number, status, bundle hash, signature,
+signer, rollback target metadata, and timestamps. It does not write runtime
+Xray config files, restart processes, or execute rollback.
 
 #### `GET /nodes/{nodeId}/config-revisions`
 
@@ -299,10 +299,22 @@ Current implementation note:
 
 This node-facing endpoint requires `Authorization: Bearer <node_token>`, checks
 that the token belongs to the node in the path, and returns only the latest
-pending dummy signed bundle metadata for that node. If the node is unknown, the
-token does not match, the node is disabled, or no pending revision exists, it
-returns `not_found`. It does not apply config, generate Xray JSON, restart
-processes, or execute rollback.
+pending signed config skeleton payload metadata for that node. If the node is
+unknown, the token does not match, the node is disabled, or no pending revision
+exists, it returns `not_found`.
+
+#### `POST /nodes/{nodeId}/config-revisions/{revisionId}/report`
+
+Report a node-agent config revision status transition.
+
+Current implementation note:
+
+This node-facing endpoint requires `Authorization: Bearer <node_token>`, checks
+that the token belongs to the node in the path, and allows the node to report
+only its own revision as `applied` or `failed`. Applied reports set the revision
+`applied_at` timestamp and update the node active revision. Failed reports set
+`failed_at` and persist a concise `error_message`. It does not execute
+rollback, restart processes, or control Xray.
 
 #### `POST /nodes/{nodeId}/rollback`
 

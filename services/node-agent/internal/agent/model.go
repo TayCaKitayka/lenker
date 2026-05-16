@@ -66,6 +66,15 @@ type ConfigRevision struct {
 	AppliedAt              time.Time      `json:"applied_at,omitempty"`
 }
 
+type ConfigRevisionReport struct {
+	Status         string    `json:"status"`
+	AppliedAt      time.Time `json:"applied_at,omitempty"`
+	FailedAt       time.Time `json:"failed_at,omitempty"`
+	ErrorMessage   string    `json:"error_message,omitempty"`
+	ActiveRevision int       `json:"active_revision,omitempty"`
+	SentAt         time.Time `json:"sent_at,omitempty"`
+}
+
 type RollbackPlan struct {
 	FromRevision int    `json:"from_revision"`
 	ToRevision   int    `json:"to_revision"`

@@ -170,6 +170,38 @@ func TestFetchPendingConfigRevisionBuildsBearerRequest(t *testing.T) {
 	}
 }
 
+func TestReportConfigRevisionBuildsBearerRequest(t *testing.T) {
+	var decodedReport ConfigRevisionReport
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes/node-1/config-revisions/revision-1/report" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer node-token" {
+			t.Fatalf("unexpected authorization header")
+		}
+		if err := json.NewDecoder(r.Body).Decode(&decodedReport); err != nil {
+			t.Fatalf("expected report json: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"status": "applied"}})
+	}))
+	defer server.Close()
+
+	client := PanelClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	err := client.ReportConfigRevision(context.Background(), "node-1", "node-token", "revision-1", ConfigRevisionReport{
+		Status:         "applied",
+		ActiveRevision: 4,
+	})
+	if err != nil {
+		t.Fatalf("expected report success: %v", err)
+	}
+	if decodedReport.Status != "applied" || decodedReport.ActiveRevision != 4 {
+		t.Fatalf("unexpected report body: %#v", decodedReport)
+	}
+}
+
 func TestFetchPendingConfigRevisionNoPending(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
@@ -271,15 +303,107 @@ func TestFetchAndApplyPendingConfigRevisionRejectsTamperedRevision(t *testing.T)
 	}
 }
 
+func TestPollPendingConfigRevisionNoPendingDoesNotReport(t *testing.T) {
+	client := &fakePendingConfigRevisionClient{ok: false}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if err != nil {
+		t.Fatalf("expected no-op: %v", err)
+	}
+	if applied {
+		t.Fatalf("expected no pending revision")
+	}
+	if client.reported {
+		t.Fatalf("no pending revision must not report status")
+	}
+}
+
+func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+	now := time.Date(2026, 5, 16, 1, 2, 3, 0, time.UTC)
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, now)
+	if err != nil {
+		t.Fatalf("expected applied report: %v", err)
+	}
+	if !applied {
+		t.Fatalf("expected revision applied")
+	}
+	if !client.reported || client.report.Status != "applied" || client.report.ActiveRevision != 4 {
+		t.Fatalf("expected applied report, got %#v", client.report)
+	}
+	if service.Status().ActiveRevision != 4 || service.Status().LastAppliedRevision != 4 {
+		t.Fatalf("expected active revision in status: %#v", service.Status())
+	}
+}
+
+func TestPollPendingConfigRevisionReportsFailedForTamperedRevision(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	revision.Bundle["protocol"] = "tampered"
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if !errors.Is(err, ErrInvalidConfigBundleHash) {
+		t.Fatalf("expected invalid hash, got %v", err)
+	}
+	if applied {
+		t.Fatalf("tampered revision must not be applied")
+	}
+	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != "invalid config bundle hash" {
+		t.Fatalf("expected failed report, got %#v", client.report)
+	}
+}
+
+func TestPollPendingConfigRevisionReportFailureHandled(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true, reportErr: ErrUnexpectedPanelResponse}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+
+	_, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if !errors.Is(err, ErrUnexpectedPanelResponse) {
+		t.Fatalf("expected report failure, got %v", err)
+	}
+}
+
+func TestValidateAndStoreConfigRevisionRejectsInvalidRenderedPayload(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	delete(revision.Bundle, "config")
+	resignTestConfigRevision(t, &revision)
+	service := NewService(Identity{NodeID: "node-1"})
+
+	err := service.ValidateAndStoreConfigRevision(revision)
+	if !errors.Is(err, ErrInvalidConfigPayload) {
+		t.Fatalf("expected invalid payload, got %v", err)
+	}
+}
+
 func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, rollbackTarget int) ConfigRevision {
 	t.Helper()
 	bundle := map[string]any{
-		"kind":            "dummy",
-		"protocol":        "vless-reality-xtls-vision",
-		"xray_runtime":    false,
-		"generated_by":    "panel-api",
 		"schema_version":  "config-bundle.v1alpha1",
+		"generated_by":    "panel-api",
+		"protocol":        "vless-reality-xtls-vision",
 		"revision_number": revisionNumber,
+		"core_type":       "xray",
+		"config_kind":     "xray-config-skeleton",
+		"node": map[string]any{
+			"id": nodeID,
+		},
+		"transport": map[string]any{
+			"network":  "tcp",
+			"security": "reality",
+			"xtls":     "vision",
+		},
+		"config": map[string]any{
+			"inbounds":  []any{},
+			"outbounds": []any{},
+			"routing":   map[string]any{},
+		},
+		"config_text": "lenker xray vless reality skeleton",
 	}
 	body, err := json.Marshal(bundle)
 	if err != nil {
@@ -305,16 +429,44 @@ func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, r
 	return revision
 }
 
+func resignTestConfigRevision(t *testing.T, revision *ConfigRevision) {
+	t.Helper()
+	body, err := json.Marshal(revision.Bundle)
+	if err != nil {
+		t.Fatalf("expected bundle hash: %v", err)
+	}
+	sum := sha256.Sum256(body)
+	revision.BundleHash = hex.EncodeToString(sum[:])
+	mac := hmac.New(sha256.New, []byte(devConfigBundleKey))
+	if _, err := mac.Write([]byte(configSigningPayload(*revision))); err != nil {
+		t.Fatalf("expected signature: %v", err)
+	}
+	revision.Signature = hex.EncodeToString(mac.Sum(nil))
+}
+
 type fakePendingConfigRevisionClient struct {
 	revision  ConfigRevision
 	ok        bool
 	err       error
 	nodeID    string
 	nodeToken string
+	reported  bool
+	reportID  string
+	report    ConfigRevisionReport
+	reportErr error
 }
 
 func (c *fakePendingConfigRevisionClient) FetchPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, bool, error) {
 	c.nodeID = nodeID
 	c.nodeToken = nodeToken
 	return c.revision, c.ok, c.err
+}
+
+func (c *fakePendingConfigRevisionClient) ReportConfigRevision(ctx context.Context, nodeID string, nodeToken string, revisionID string, report ConfigRevisionReport) error {
+	c.nodeID = nodeID
+	c.nodeToken = nodeToken
+	c.reported = true
+	c.reportID = revisionID
+	c.report = report
+	return c.reportErr
 }

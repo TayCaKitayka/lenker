@@ -22,6 +22,7 @@ var (
 	ErrInvalidConfigRevision   = errors.New("invalid config revision")
 	ErrInvalidConfigBundleHash = errors.New("invalid config bundle hash")
 	ErrInvalidConfigSignature  = errors.New("invalid config bundle signature")
+	ErrInvalidConfigPayload    = errors.New("invalid config payload")
 )
 
 type Service struct {
@@ -109,6 +110,9 @@ func (s *Service) ValidateAndStoreConfigRevision(revision ConfigRevision) error 
 	if err := verifyConfigSignature(revision); err != nil {
 		return err
 	}
+	if err := validateRenderedConfigPayload(revision); err != nil {
+		return err
+	}
 	s.configRevisions[revision.RevisionNumber] = revision
 	s.status.ActiveRevision = revision.RevisionNumber
 	s.status.LastRollbackRevision = revision.RollbackTargetRevision
@@ -142,6 +146,53 @@ func (s *Service) FetchAndApplyPendingConfigRevision(ctx context.Context, client
 		return false, nil
 	}
 	if err := s.ApplyConfigRevisionMetadata(revision); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingConfigRevisionClient, now time.Time) (bool, error) {
+	if client == nil {
+		return false, ErrUnexpectedPanelResponse
+	}
+	if s.identity.NodeID == "" {
+		return false, ErrNodeIDRequired
+	}
+	if s.identity.NodeToken == "" {
+		return false, ErrNodeTokenRequired
+	}
+
+	revision, ok, err := client.FetchPendingConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+
+	reportTime := now.UTC()
+	if reportTime.IsZero() {
+		reportTime = time.Now().UTC()
+	}
+	if err := s.ApplyConfigRevisionMetadata(revision); err != nil {
+		reportErr := client.ReportConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken, revision.ID, ConfigRevisionReport{
+			Status:       "failed",
+			FailedAt:     reportTime,
+			ErrorMessage: configRevisionErrorMessage(err),
+			SentAt:       reportTime,
+		})
+		if reportErr != nil {
+			return false, reportErr
+		}
+		return false, err
+	}
+
+	if err := client.ReportConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken, revision.ID, ConfigRevisionReport{
+		Status:         "applied",
+		AppliedAt:      reportTime,
+		ActiveRevision: revision.RevisionNumber,
+		SentAt:         reportTime,
+	}); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -190,4 +241,77 @@ func verifyConfigSignature(revision ConfigRevision) error {
 
 func configSigningPayload(revision ConfigRevision) string {
 	return fmt.Sprintf("%s\n%d\n%s\n%d", revision.NodeID, revision.RevisionNumber, revision.BundleHash, revision.RollbackTargetRevision)
+}
+
+func validateRenderedConfigPayload(revision ConfigRevision) error {
+	if revision.Bundle == nil {
+		return ErrInvalidConfigPayload
+	}
+	requiredStrings := map[string]string{
+		"schema_version": "config-bundle.v1alpha1",
+		"generated_by":   "panel-api",
+		"protocol":       "vless-reality-xtls-vision",
+		"core_type":      "xray",
+		"config_kind":    "xray-config-skeleton",
+	}
+	for key, expected := range requiredStrings {
+		value, ok := revision.Bundle[key].(string)
+		if !ok || value != expected {
+			return ErrInvalidConfigPayload
+		}
+	}
+	if number, ok := numberAsInt(revision.Bundle["revision_number"]); !ok || number != revision.RevisionNumber {
+		return ErrInvalidConfigPayload
+	}
+	if _, ok := revision.Bundle["node"].(map[string]any); !ok {
+		return ErrInvalidConfigPayload
+	}
+	if _, ok := revision.Bundle["transport"].(map[string]any); !ok {
+		return ErrInvalidConfigPayload
+	}
+	config, ok := revision.Bundle["config"].(map[string]any)
+	if !ok {
+		return ErrInvalidConfigPayload
+	}
+	if _, ok := config["inbounds"].([]any); !ok {
+		return ErrInvalidConfigPayload
+	}
+	if _, ok := config["outbounds"].([]any); !ok {
+		return ErrInvalidConfigPayload
+	}
+	if _, ok := config["routing"].(map[string]any); !ok {
+		return ErrInvalidConfigPayload
+	}
+	return nil
+}
+
+func numberAsInt(value any) (int, bool) {
+	switch typedValue := value.(type) {
+	case int:
+		return typedValue, true
+	case int64:
+		return int(typedValue), true
+	case float64:
+		if typedValue != float64(int(typedValue)) {
+			return 0, false
+		}
+		return int(typedValue), true
+	default:
+		return 0, false
+	}
+}
+
+func configRevisionErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, ErrInvalidConfigBundleHash):
+		return "invalid config bundle hash"
+	case errors.Is(err, ErrInvalidConfigSignature):
+		return "invalid config bundle signature"
+	case errors.Is(err, ErrInvalidConfigPayload):
+		return "invalid config payload"
+	case errors.Is(err, ErrInvalidConfigRevision):
+		return "invalid config revision"
+	default:
+		return "config revision apply failed"
+	}
 }

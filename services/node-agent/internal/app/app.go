@@ -25,6 +25,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		NodeToken:      cfg.NodeToken,
 		PanelURL:       cfg.PanelURL,
 	})
+	panelClient := agent.PanelClient{BaseURL: cfg.PanelURL}
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -34,6 +35,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 
 	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.PanelURL != "" && cfg.NodeID != "" && cfg.NodeToken != "" {
+		go runConfigPollingLoop(runCtx, logger, agentService, panelClient, cfg.ConfigPollInterval)
+	} else {
+		logger.Info("config polling disabled until panel url, node id, and node token are configured")
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -59,6 +66,37 @@ func Run(ctx context.Context, cfg config.Config) error {
 
 	logger.Info("node agent stopped")
 	return nil
+}
+
+func runConfigPollingLoop(ctx context.Context, logger *slog.Logger, service *agent.Service, client agent.PendingConfigRevisionClient, interval time.Duration) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	poll := func() {
+		applied, err := service.PollPendingConfigRevision(ctx, client, time.Now().UTC())
+		if err != nil {
+			logger.Warn("config revision poll failed", "error", err)
+			return
+		}
+		if applied {
+			status := service.Status()
+			logger.Info("config revision metadata applied", "active_revision", status.ActiveRevision)
+		}
+	}
+
+	poll()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			poll()
+		}
+	}
 }
 
 func newLogger(cfg config.Config) *slog.Logger {
