@@ -15,7 +15,7 @@ Current implemented foundation:
 - users management page with list, create, update, suspend, and activate flows;
 - plans management page with list, create, update, and archive flows;
 - subscriptions management page with list, create, update, and renew flows;
-- navigation placeholder for nodes.
+- nodes management page with list, detail, bootstrap token creation, drain, undrain, disable, and enable flows.
 
 Run from the repository root:
 
@@ -60,6 +60,12 @@ Focused subscriptions form tests:
 npm --workspace @lenker/panel-web run test:subscriptions
 ```
 
+Focused nodes form/action tests:
+
+```sh
+npm --workspace @lenker/panel-web run test:nodes
+```
+
 Planned `MVP v0.1` provider UI scope:
 
 - real `panel-api` admin login;
@@ -74,6 +80,14 @@ Not planned for this first UI layer:
 
 - marketplace UI;
 - billing UI;
+- config apply, Xray process control, or rollback execution;
 - marketing landing;
 - advanced analytics;
 - client app UI.
+
+Nodes page note:
+
+The nodes page uses the existing `panel-api` admin Bearer session flow. It can
+create one-time plaintext bootstrap token responses and show them in memory, but
+does not store bootstrap tokens in browser storage. It does not implement config
+revision management, config delivery/apply, or Xray runtime control.

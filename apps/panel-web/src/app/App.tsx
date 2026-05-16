@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useMemo, useState } from "react";
 import { getApiBaseUrl, loginAdmin, PanelApiError } from "../lib/api";
 import { clearStoredSession, loadStoredSession, saveStoredSession, type StoredSession } from "../lib/session";
+import { NodesPage } from "../pages/NodesPage";
 import { PlansPage } from "../pages/PlansPage";
 import { SubscriptionsPage } from "../pages/SubscriptionsPage";
 import { UsersPage } from "../pages/UsersPage";
@@ -176,7 +177,7 @@ export function App() {
         {activePage === "users" ? <UsersPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
         {activePage === "plans" ? <PlansPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
         {activePage === "subscriptions" ? <SubscriptionsPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
-        {activePage === "nodes" ? <PlaceholderPage title="Nodes" description="Node list, status, drain, and disable controls are planned." /> : null}
+        {activePage === "nodes" ? <NodesPage session={storedSession} onUnauthorized={handleUnauthorized} /> : null}
       </section>
     </main>
   );
@@ -212,24 +213,9 @@ function Dashboard({ expiresAtLabel }: DashboardProps) {
         <StatusCard title="Users" value="Live" description="Create, edit, suspend, and activate users." />
         <StatusCard title="Plans" value="Live" description="Create, edit, and archive subscription plans." />
         <StatusCard title="Subscriptions" value="Live" description="Create, update, and renew subscriptions." />
-        <StatusCard title="Nodes" value="Next" description="Inspect status, drain, disable, and enable nodes." />
+        <StatusCard title="Nodes" value="Live" description="Bootstrap, inspect, drain, disable, and enable nodes." />
       </section>
     </>
-  );
-}
-
-interface PlaceholderPageProps {
-  title: string;
-  description: string;
-}
-
-function PlaceholderPage({ title, description }: PlaceholderPageProps) {
-  return (
-    <section className="hero-card">
-      <p className="eyebrow">Coming next</p>
-      <h2>{title}</h2>
-      <p>{description}</p>
-    </section>
   );
 }
 

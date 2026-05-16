@@ -422,6 +422,10 @@ select {
   min-width: 1120px;
 }
 
+.nodes-table {
+  min-width: 1320px;
+}
+
 .data-table th,
 .data-table td {
   padding: 14px 16px;
@@ -439,6 +443,10 @@ select {
 
 .data-table tr:last-child td {
   border-bottom: 0;
+}
+
+.selected-row td {
+  background: #f8fafc;
 }
 
 .management-table th:last-child,
@@ -484,6 +492,63 @@ select {
   color: #475569;
 }
 
+.status-pending,
+.status-unhealthy,
+.status-draining,
+.status-drained {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-disabled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.node-detail-grid,
+.token-result {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.node-detail-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.token-result {
+  grid-template-columns: 1fr;
+}
+
+.node-detail-grid div,
+.token-result div {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: #f5f7fb;
+}
+
+.node-detail-grid dt,
+.token-result dt {
+  color: #65758f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.node-detail-grid dd,
+.token-result dd {
+  margin: 6px 0 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.token-value {
+  display: block;
+  padding: 10px;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
 @media (max-width: 920px) {
   .panel-layout {
     grid-template-columns: 1fr;
@@ -496,7 +561,8 @@ select {
 
   .cards-grid,
   .form-grid,
-  .details-grid {
+  .details-grid,
+  .node-detail-grid {
     grid-template-columns: 1fr;
   }
 

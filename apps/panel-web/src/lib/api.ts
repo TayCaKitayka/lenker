@@ -30,6 +30,18 @@ interface SubscriptionResponse {
   data: Subscription;
 }
 
+interface NodeListResponse {
+  data?: NodeSummary[] | null;
+}
+
+interface NodeResponse {
+  data: Node;
+}
+
+interface NodeBootstrapTokenResponse {
+  data: NodeBootstrapToken;
+}
+
 interface ApiErrorResponse {
   error?: {
     code?: string;
@@ -108,6 +120,46 @@ export interface UpdateSubscriptionInput {
 
 export interface RenewSubscriptionInput {
   extend_days: number;
+}
+
+export type NodeStatus = "pending" | "active" | "unhealthy" | "drained" | "disabled";
+export type NodeDrainState = "active" | "draining" | "drained";
+
+export interface NodeSummary {
+  id: string;
+  name: string;
+  region: string;
+  country_code?: string;
+  hostname?: string;
+  status: NodeStatus;
+  drain_state: NodeDrainState;
+  last_seen_at?: string | null;
+  registered_at?: string | null;
+  agent_version: string;
+  active_revision_id: number;
+}
+
+export interface Node extends NodeSummary {
+  country_code: string;
+  hostname: string;
+  xray_version: string;
+  last_health_at?: string | null;
+  updated_at: string;
+}
+
+export interface CreateNodeBootstrapTokenInput {
+  name?: string;
+  region?: string;
+  country_code?: string;
+  hostname?: string;
+  expires_in_minutes?: number;
+}
+
+export interface NodeBootstrapToken {
+  id: string;
+  node_id: string;
+  bootstrap_token: string;
+  expires_at: string;
 }
 
 export class PanelApiError extends Error {
@@ -258,6 +310,43 @@ export async function renewSubscription(
   return payload.data;
 }
 
+export async function listNodes(session: StoredSession): Promise<NodeSummary[]> {
+  const payload = await authorizedRequest<NodeListResponse>(session, "/api/v1/nodes");
+  return readListData(payload, "nodes");
+}
+
+export async function getNode(session: StoredSession, nodeID: string): Promise<Node> {
+  const payload = await authorizedRequest<NodeResponse>(session, `/api/v1/nodes/${encodeURIComponent(nodeID)}`);
+  return payload.data;
+}
+
+export async function createNodeBootstrapToken(
+  session: StoredSession,
+  input: CreateNodeBootstrapTokenInput,
+): Promise<NodeBootstrapToken> {
+  const payload = await authorizedRequest<NodeBootstrapTokenResponse>(session, "/api/v1/nodes/bootstrap-token", {
+    method: "POST",
+    body: input,
+  });
+  return payload.data;
+}
+
+export async function drainNode(session: StoredSession, nodeID: string): Promise<Node> {
+  return nodeLifecycleRequest(session, nodeID, "drain");
+}
+
+export async function undrainNode(session: StoredSession, nodeID: string): Promise<Node> {
+  return nodeLifecycleRequest(session, nodeID, "undrain");
+}
+
+export async function disableNode(session: StoredSession, nodeID: string): Promise<Node> {
+  return nodeLifecycleRequest(session, nodeID, "disable");
+}
+
+export async function enableNode(session: StoredSession, nodeID: string): Promise<Node> {
+  return nodeLifecycleRequest(session, nodeID, "enable");
+}
+
 interface AuthorizedRequestOptions {
   method?: "GET" | "POST" | "PATCH";
   body?: unknown;
@@ -310,4 +399,11 @@ function readListData<TItem>(payload: { data?: TItem[] | null }, resourceName: s
   }
 
   throw new PanelApiError(`Unexpected ${resourceName} response`, "invalid_response", 200);
+}
+
+async function nodeLifecycleRequest(session: StoredSession, nodeID: string, action: string): Promise<Node> {
+  const payload = await authorizedRequest<NodeResponse>(session, `/api/v1/nodes/${encodeURIComponent(nodeID)}/${action}`, {
+    method: "POST",
+  });
+  return payload.data;
 }
