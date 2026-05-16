@@ -222,9 +222,11 @@ Current implementation note:
 
 The current backend slice accepts `Authorization: Bearer <node_token>` and
 updates basic node status, agent version, active revision, `last_seen_at`, and
-last health timestamp. Unknown nodes return `not_found`. It does not register
-new nodes, and it does not store metrics, logs, config blobs, or traffic
-accounting.
+last health timestamp. It also accepts read-only runtime readiness metadata:
+`last_validation_status`, `last_validation_error`, `last_validation_at`,
+`last_applied_revision`, and `active_config_path`. Unknown nodes return
+`not_found`. It does not register new nodes, and it does not store metrics,
+logs, config blobs, or traffic accounting.
 
 #### `GET /nodes/{nodeId}`
 
@@ -325,8 +327,9 @@ only its own revision as `applied` or `failed`. Applied reports set the revision
 `failed_at` and persist a concise `error_message`; node active revision is not
 advanced on failed validation. Xray compatibility failures use stable summaries
 such as `invalid_xray_config:invalid_routing_outbound_reference`; optional Xray
-binary dry-run failures use `xray_dry_run_failed:<reason>`. It does not execute
-rollback, restart processes, or control Xray.
+binary dry-run failures use `xray_dry_run_failed:<reason>`. Reports also update
+the node read-only runtime readiness fields shown in admin node detail. It does
+not execute rollback, restart processes, or control Xray.
 
 #### `POST /nodes/{nodeId}/config-revisions/{revisionId}/rollback`
 

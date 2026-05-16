@@ -96,11 +96,16 @@ func (s *Service) BuildHeartbeatPayload(now time.Time) (HeartbeatPayload, error)
 	}
 
 	return HeartbeatPayload{
-		NodeID:         s.identity.NodeID,
-		AgentVersion:   AgentVersion,
-		Status:         s.status.Status,
-		ActiveRevision: s.status.ActiveRevision,
-		SentAt:         now.UTC(),
+		NodeID:               s.identity.NodeID,
+		AgentVersion:         AgentVersion,
+		Status:               s.status.Status,
+		ActiveRevision:       s.status.ActiveRevision,
+		LastValidationStatus: s.status.LastValidationStatus,
+		LastValidationError:  s.status.LastValidationError,
+		LastValidationAt:     s.status.LastValidationAt,
+		LastAppliedRevision:  s.status.LastAppliedRevision,
+		ActiveConfigPath:     s.status.ConfigArtifactPath,
+		SentAt:               now.UTC(),
 	}, nil
 }
 
@@ -114,6 +119,15 @@ func (s *Service) MarkHeartbeatSent(at time.Time) {
 func (s *Service) TrackAppliedRevision(revision ConfigRevision) {
 	s.status.ActiveRevision = revision.RevisionNumber
 	s.status.LastAppliedRevision = revision.RevisionNumber
+}
+
+func (s *Service) TrackValidationResult(status string, message string, at time.Time) {
+	s.status.LastValidationStatus = status
+	s.status.LastValidationError = strings.TrimSpace(message)
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	s.status.LastValidationAt = at.UTC()
 }
 
 func (s *Service) ValidateAndStoreConfigRevision(revision ConfigRevision) error {
@@ -166,6 +180,7 @@ func (s *Service) ApplyConfigRevisionWithContext(ctx context.Context, revision C
 	s.TrackAppliedRevision(revision)
 	s.status.ConfigArtifactPath = artifact.ConfigPath
 	s.status.MetadataArtifactPath = artifact.MetadataPath
+	s.TrackValidationResult("applied", "", time.Now().UTC())
 	return nil
 }
 
@@ -217,23 +232,35 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 		reportTime = time.Now().UTC()
 	}
 	if err := s.ApplyConfigRevisionWithContext(ctx, revision); err != nil {
+		errorMessage := configRevisionErrorMessage(err)
+		s.TrackValidationResult("failed", errorMessage, reportTime)
 		reportErr := client.ReportConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken, revision.ID, ConfigRevisionReport{
-			Status:       "failed",
-			FailedAt:     reportTime,
-			ErrorMessage: configRevisionErrorMessage(err),
-			SentAt:       reportTime,
+			Status:               "failed",
+			FailedAt:             reportTime,
+			ErrorMessage:         errorMessage,
+			LastValidationStatus: "failed",
+			LastValidationError:  errorMessage,
+			LastValidationAt:     reportTime,
+			LastAppliedRevision:  s.status.LastAppliedRevision,
+			ActiveConfigPath:     s.status.ConfigArtifactPath,
+			SentAt:               reportTime,
 		})
 		if reportErr != nil {
 			return false, reportErr
 		}
 		return false, err
 	}
+	s.TrackValidationResult("applied", "", reportTime)
 
 	if err := client.ReportConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken, revision.ID, ConfigRevisionReport{
-		Status:         "applied",
-		AppliedAt:      reportTime,
-		ActiveRevision: revision.RevisionNumber,
-		SentAt:         reportTime,
+		Status:               "applied",
+		AppliedAt:            reportTime,
+		ActiveRevision:       revision.RevisionNumber,
+		LastValidationStatus: "applied",
+		LastValidationAt:     reportTime,
+		LastAppliedRevision:  s.status.LastAppliedRevision,
+		ActiveConfigPath:     s.status.ConfigArtifactPath,
+		SentAt:               reportTime,
 	}); err != nil {
 		return false, err
 	}

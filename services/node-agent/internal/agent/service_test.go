@@ -57,6 +57,11 @@ func TestBuildHeartbeatPayloadRequiresNodeID(t *testing.T) {
 func TestBuildHeartbeatPayload(t *testing.T) {
 	now := time.Date(2026, 5, 15, 1, 2, 3, 0, time.UTC)
 	service := NewService(Identity{NodeID: "node-1"})
+	service.status.LastValidationStatus = "failed"
+	service.status.LastValidationError = "xray_dry_run_failed:invalid_inbound"
+	service.status.LastValidationAt = now.Add(-time.Minute)
+	service.status.LastAppliedRevision = 3
+	service.status.ConfigArtifactPath = "/var/lib/lenker/node-agent/active/config.json"
 
 	payload, err := service.BuildHeartbeatPayload(now)
 	if err != nil {
@@ -67,6 +72,12 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	}
 	if payload.Status != StatusActive {
 		t.Fatalf("expected active status, got %q", payload.Status)
+	}
+	if payload.LastValidationStatus != "failed" || payload.LastValidationError != "xray_dry_run_failed:invalid_inbound" {
+		t.Fatalf("expected validation metadata in heartbeat: %#v", payload)
+	}
+	if payload.LastAppliedRevision != 3 || payload.ActiveConfigPath == "" {
+		t.Fatalf("expected runtime readiness metadata in heartbeat: %#v", payload)
 	}
 }
 
@@ -337,8 +348,14 @@ func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
 	if !client.reported || client.report.Status != "applied" || client.report.ActiveRevision != 4 {
 		t.Fatalf("expected applied report, got %#v", client.report)
 	}
+	if client.report.LastValidationStatus != "applied" || client.report.LastAppliedRevision != 4 || client.report.ActiveConfigPath == "" {
+		t.Fatalf("expected applied runtime metadata report, got %#v", client.report)
+	}
 	if service.Status().ActiveRevision != 4 || service.Status().LastAppliedRevision != 4 {
 		t.Fatalf("expected active revision in status: %#v", service.Status())
+	}
+	if service.Status().LastValidationStatus != "applied" || !service.Status().LastValidationAt.Equal(now) {
+		t.Fatalf("expected applied validation status: %#v", service.Status())
 	}
 	if service.Status().ConfigArtifactPath == "" {
 		t.Fatalf("expected config artifact path in status")
@@ -415,6 +432,12 @@ func TestPollPendingConfigRevisionDryRunFailureReportsFailedAndKeepsActive(t *te
 	}
 	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != "xray_dry_run_failed:invalid_inbound" {
 		t.Fatalf("expected failed dry-run report, got %#v", client.report)
+	}
+	if client.report.LastValidationStatus != "failed" || client.report.LastValidationError != "xray_dry_run_failed:invalid_inbound" {
+		t.Fatalf("expected failed runtime metadata report, got %#v", client.report)
+	}
+	if service.Status().LastValidationStatus != "failed" || service.Status().LastValidationError != "xray_dry_run_failed:invalid_inbound" {
+		t.Fatalf("expected failed validation status: %#v", service.Status())
 	}
 }
 

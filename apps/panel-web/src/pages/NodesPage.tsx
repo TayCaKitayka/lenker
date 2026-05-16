@@ -569,6 +569,26 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
             <DetailItem label="Registered" value={formatNodeTimestamp(selectedNode.registered_at)} />
             <DetailItem label="Updated" value={formatNodeTimestamp(selectedNode.updated_at)} />
           </dl>
+
+          <section className="runtime-status-panel" aria-label="Node runtime validation status">
+            <div className="section-heading compact-heading">
+              <div>
+                <p className="eyebrow">Runtime readiness</p>
+                <h4>Validation status</h4>
+              </div>
+              <span className={`status-badge ${runtimeValidationStatusClass(selectedNode.last_validation_status)}`}>
+                {selectedNode.last_validation_status || "not validated"}
+              </span>
+            </div>
+
+            <dl className="runtime-status-grid">
+              <DetailItem label="Last validation status" value={selectedNode.last_validation_status || "not yet validated"} />
+              <DetailItem label="Last validation error" value={selectedNode.last_validation_error} mono />
+              <DetailItem label="Last validation at" value={formatNodeTimestamp(selectedNode.last_validation_at)} />
+              <DetailItem label="Last applied revision" value={formatRevisionNumber(selectedNode.last_applied_revision)} />
+              <DetailItem label="Active config path" value={selectedNode.active_config_path} mono />
+            </dl>
+          </section>
         </section>
       ) : null}
 
@@ -737,6 +757,20 @@ function DetailItem({ label, value, mono }: DetailItemProps) {
       <dd className={mono ? "mono-cell" : undefined}>{value || "-"}</dd>
     </div>
   );
+}
+
+function runtimeValidationStatusClass(status?: string | null): string {
+  if (status === "applied") {
+    return "status-active";
+  }
+  if (status === "failed") {
+    return "status-disabled";
+  }
+  return "status-pending";
+}
+
+function formatRevisionNumber(value?: number): string {
+  return value && value > 0 ? String(value) : "-";
 }
 
 interface RevisionFailureBlockProps {

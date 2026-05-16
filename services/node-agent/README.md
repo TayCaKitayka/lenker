@@ -139,6 +139,10 @@ with a concise `error_message` such as
 `invalid_xray_config:missing_stream_settings` or
 `xray_dry_run_failed:invalid_config`.
 
+The agent also exposes the latest runtime readiness metadata in `/status` and
+heartbeat/report payloads: `last_validation_status`, `last_validation_error`,
+`last_validation_at`, `last_applied_revision`, and `active_config_path`.
+
 Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 
 ```text

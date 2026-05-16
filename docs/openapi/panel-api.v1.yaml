@@ -1172,6 +1172,23 @@ components:
         active_revision_id:
           type: integer
           minimum: 0
+        last_validation_status:
+          type: string
+          description: Latest node-agent config validation/apply result, empty when no validation has been reported yet.
+          enum: ["", applied, failed]
+        last_validation_error:
+          type: string
+          description: Compact latest validation/apply failure reason, empty after a successful apply or before first validation.
+        last_validation_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_applied_revision:
+          type: integer
+          minimum: 0
+        active_config_path:
+          type: string
+          description: Node-local active config artifact path reported by node-agent.
     Node:
       allOf:
         - $ref: "#/components/schemas/NodeSummary"
@@ -1283,6 +1300,22 @@ components:
         active_revision:
           type: integer
           minimum: 0
+        last_validation_status:
+          type: string
+          description: Latest node-agent validation/apply result.
+          enum: [applied, failed]
+        last_validation_error:
+          type: string
+          description: Compact latest validation/apply failure reason.
+        last_validation_at:
+          type: string
+          format: date-time
+        last_applied_revision:
+          type: integer
+          minimum: 0
+        active_config_path:
+          type: string
+          description: Node-local active config artifact path.
         sent_at:
           type: string
           format: date-time
@@ -1354,6 +1387,22 @@ components:
         active_revision:
           type: integer
           minimum: 0
+        last_validation_status:
+          type: string
+          description: Latest node-agent validation/apply result.
+          enum: [applied, failed]
+        last_validation_error:
+          type: string
+          description: Compact latest validation/apply failure reason.
+        last_validation_at:
+          type: string
+          format: date-time
+        last_applied_revision:
+          type: integer
+          minimum: 0
+        active_config_path:
+          type: string
+          description: Node-local active config artifact path.
         sent_at:
           type: string
           format: date-time
@@ -1372,6 +1421,20 @@ components:
         active_revision:
           type: integer
           minimum: 0
+        last_validation_status:
+          type: string
+          enum: ["", applied, failed]
+        last_validation_error:
+          type: string
+        last_validation_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_applied_revision:
+          type: integer
+          minimum: 0
+        active_config_path:
+          type: string
         last_seen_at:
           type: string
           format: date-time

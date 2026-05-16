@@ -25,20 +25,25 @@ var (
 )
 
 type Node struct {
-	ID             string     `json:"id"`
-	Name           string     `json:"name"`
-	Region         string     `json:"region"`
-	CountryCode    string     `json:"country_code"`
-	Hostname       string     `json:"hostname"`
-	Status         string     `json:"status"`
-	DrainState     string     `json:"drain_state"`
-	AgentVersion   string     `json:"agent_version"`
-	XrayVersion    string     `json:"xray_version"`
-	ActiveRevision int        `json:"active_revision"`
-	LastHealthAt   *time.Time `json:"last_health_at"`
-	LastSeenAt     *time.Time `json:"last_seen_at"`
-	RegisteredAt   *time.Time `json:"registered_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID                   string     `json:"id"`
+	Name                 string     `json:"name"`
+	Region               string     `json:"region"`
+	CountryCode          string     `json:"country_code"`
+	Hostname             string     `json:"hostname"`
+	Status               string     `json:"status"`
+	DrainState           string     `json:"drain_state"`
+	AgentVersion         string     `json:"agent_version"`
+	XrayVersion          string     `json:"xray_version"`
+	ActiveRevision       int        `json:"active_revision"`
+	LastValidationStatus string     `json:"last_validation_status"`
+	LastValidationError  string     `json:"last_validation_error"`
+	LastValidationAt     *time.Time `json:"last_validation_at"`
+	LastAppliedRevision  int        `json:"last_applied_revision"`
+	ActiveConfigPath     string     `json:"active_config_path"`
+	LastHealthAt         *time.Time `json:"last_health_at"`
+	LastSeenAt           *time.Time `json:"last_seen_at"`
+	RegisteredAt         *time.Time `json:"registered_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 type CreateBootstrapTokenInput struct {
@@ -71,12 +76,18 @@ type RegisterNodeResult struct {
 }
 
 type HeartbeatInput struct {
-	NodeID         string
-	NodeToken      string
-	AgentVersion   string
-	Status         string
-	ActiveRevision int
-	SentAt         time.Time
+	NodeID                 string
+	NodeToken              string
+	AgentVersion           string
+	Status                 string
+	ActiveRevision         int
+	RuntimeMetadataPresent bool
+	LastValidationStatus   string
+	LastValidationError    string
+	LastValidationAt       time.Time
+	LastAppliedRevision    int
+	ActiveConfigPath       string
+	SentAt                 time.Time
 }
 
 type ConfigRevision struct {
@@ -108,14 +119,20 @@ type CreateRollbackConfigRevisionInput struct {
 }
 
 type ReportConfigRevisionInput struct {
-	NodeID       string
-	NodeToken    string
-	RevisionID   string
-	Status       string
-	AppliedAt    time.Time
-	FailedAt     time.Time
-	ErrorMessage string
-	SentAt       time.Time
+	NodeID                 string
+	NodeToken              string
+	RevisionID             string
+	Status                 string
+	AppliedAt              time.Time
+	FailedAt               time.Time
+	ErrorMessage           string
+	RuntimeMetadataPresent bool
+	LastValidationStatus   string
+	LastValidationError    string
+	LastValidationAt       time.Time
+	LastAppliedRevision    int
+	ActiveConfigPath       string
+	SentAt                 time.Time
 }
 
 type NodesRepository interface {
@@ -146,7 +163,7 @@ func NewNodesRepository(db *sql.DB) NodesRepository {
 
 func (r *nodesRepository) List(ctx context.Context) ([]Node, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		ORDER BY created_at DESC
 	`)
@@ -171,7 +188,7 @@ func (r *nodesRepository) List(ctx context.Context) ([]Node, error) {
 
 func (r *nodesRepository) FindByID(ctx context.Context, id string) (Node, error) {
 	node, err := scanNode(r.db.QueryRowContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		WHERE id = $1
 	`, id))
@@ -279,11 +296,7 @@ func (r *nodesRepository) Register(ctx context.Context, input RegisterNodeInput)
 		return RegisterNodeResult{}, ErrInvalidBootstrapToken
 	}
 
-	var node Node
-	var lastHealthAt sql.NullTime
-	var lastSeenAt sql.NullTime
-	var registeredAt sql.NullTime
-	err = tx.QueryRowContext(ctx, `
+	node, err := scanNode(tx.QueryRowContext(ctx, `
 		UPDATE nodes
 		SET hostname = CASE WHEN $2 = '' THEN hostname ELSE $2 END,
 		    agent_version = $3,
@@ -295,38 +308,13 @@ func (r *nodesRepository) Register(ctx context.Context, input RegisterNodeInput)
 		    updated_at = $5
 		WHERE id = $1
 		  AND status IN ('pending', 'active', 'unhealthy', 'drained')
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
-	`, tokenNodeID, input.Hostname, input.AgentVersion, HashNodeToken(nodeToken), now).Scan(
-		&node.ID,
-		&node.Name,
-		&node.Region,
-		&node.CountryCode,
-		&node.Hostname,
-		&node.Status,
-		&node.DrainState,
-		&node.AgentVersion,
-		&node.XrayVersion,
-		&node.ActiveRevision,
-		&lastHealthAt,
-		&lastSeenAt,
-		&registeredAt,
-		&node.UpdatedAt,
-	)
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+	`, tokenNodeID, input.Hostname, input.AgentVersion, HashNodeToken(nodeToken), now))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return RegisterNodeResult{}, ErrInvalidBootstrapToken
 		}
 		return RegisterNodeResult{}, err
-	}
-
-	if lastHealthAt.Valid {
-		node.LastHealthAt = &lastHealthAt.Time
-	}
-	if lastSeenAt.Valid {
-		node.LastSeenAt = &lastSeenAt.Time
-	}
-	if registeredAt.Valid {
-		node.RegisteredAt = &registeredAt.Time
 	}
 
 	_, err = tx.ExecContext(ctx, `
@@ -364,21 +352,27 @@ func (r *nodesRepository) RecordHeartbeat(ctx context.Context, input HeartbeatIn
 	var lastHealthAt sql.NullTime
 	var lastSeenAt sql.NullTime
 	var registeredAt sql.NullTime
+	var lastValidationAt sql.NullTime
 
 	err := r.db.QueryRowContext(ctx, `
 		UPDATE nodes
 		SET status = CASE WHEN drain_state = 'drained' THEN 'drained' ELSE $3 END,
 		    agent_version = $4,
 		    active_revision = $5,
-		    last_health_at = $6,
-		    last_seen_at = $6,
+		    last_validation_status = CASE WHEN $6 THEN $7 ELSE last_validation_status END,
+		    last_validation_error = CASE WHEN $6 THEN $8 ELSE last_validation_error END,
+		    last_validation_at = CASE WHEN $6 THEN $9 ELSE last_validation_at END,
+		    last_applied_revision = CASE WHEN $6 THEN $10 ELSE last_applied_revision END,
+		    active_config_path = CASE WHEN $6 THEN $11 ELSE active_config_path END,
+		    last_health_at = $12,
+		    last_seen_at = $12,
 		    updated_at = now()
 		WHERE id = $1
 		  AND auth_token_hash = $2
 		  AND registered_at IS NOT NULL
 		  AND status != 'disabled'
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
-	`, input.NodeID, HashNodeToken(input.NodeToken), input.Status, input.AgentVersion, input.ActiveRevision, input.SentAt).Scan(
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+	`, input.NodeID, HashNodeToken(input.NodeToken), input.Status, input.AgentVersion, input.ActiveRevision, input.RuntimeMetadataPresent, normalizeValidationStatus(input.LastValidationStatus), strings.TrimSpace(input.LastValidationError), nullableTime(input.LastValidationAt), input.LastAppliedRevision, strings.TrimSpace(input.ActiveConfigPath), input.SentAt).Scan(
 		&node.ID,
 		&node.Name,
 		&node.Region,
@@ -389,6 +383,11 @@ func (r *nodesRepository) RecordHeartbeat(ctx context.Context, input HeartbeatIn
 		&node.AgentVersion,
 		&node.XrayVersion,
 		&node.ActiveRevision,
+		&node.LastValidationStatus,
+		&node.LastValidationError,
+		&lastValidationAt,
+		&node.LastAppliedRevision,
+		&node.ActiveConfigPath,
 		&lastHealthAt,
 		&lastSeenAt,
 		&registeredAt,
@@ -399,6 +398,9 @@ func (r *nodesRepository) RecordHeartbeat(ctx context.Context, input HeartbeatIn
 			return Node{}, ErrNotFound
 		}
 		return Node{}, err
+	}
+	if lastValidationAt.Valid {
+		node.LastValidationAt = &lastValidationAt.Time
 	}
 	if lastHealthAt.Valid {
 		node.LastHealthAt = &lastHealthAt.Time
@@ -844,6 +846,21 @@ func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input Report
 		reportedAt = time.Now().UTC()
 	}
 	reportedAt = reportedAt.UTC()
+	validationStatus := normalizeValidationStatus(input.LastValidationStatus)
+	if validationStatus == "" {
+		validationStatus = input.Status
+	}
+	validationError := strings.TrimSpace(input.LastValidationError)
+	if validationError == "" && input.Status == "failed" {
+		validationError = strings.TrimSpace(input.ErrorMessage)
+	}
+	validationAt := input.LastValidationAt
+	if validationAt.IsZero() {
+		validationAt = reportedAt
+	}
+	validationAt = validationAt.UTC()
+	lastAppliedRevision := input.LastAppliedRevision
+	activeConfigPath := strings.TrimSpace(input.ActiveConfigPath)
 
 	var revision ConfigRevision
 	if input.Status == "applied" {
@@ -890,15 +907,39 @@ func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input Report
 	}
 
 	if input.Status == "applied" {
+		if lastAppliedRevision <= 0 {
+			lastAppliedRevision = revision.RevisionNumber
+		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE nodes
 			SET active_revision = $2,
-			    updated_at = $3
+			    last_validation_status = $3,
+			    last_validation_error = '',
+			    last_validation_at = $4,
+			    last_applied_revision = $5,
+			    active_config_path = $6,
+			    updated_at = $4
 			WHERE id = $1
-			  AND auth_token_hash = $4
+			  AND auth_token_hash = $7
 			  AND registered_at IS NOT NULL
 			  AND status != 'disabled'
-		`, input.NodeID, revision.RevisionNumber, reportedAt, HashNodeToken(input.NodeToken)); err != nil {
+		`, input.NodeID, revision.RevisionNumber, validationStatus, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
+			return ConfigRevision{}, err
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE nodes
+			SET last_validation_status = $2,
+			    last_validation_error = $3,
+			    last_validation_at = $4,
+			    last_applied_revision = CASE WHEN $5 > 0 THEN $5 ELSE last_applied_revision END,
+			    active_config_path = CASE WHEN $6 <> '' THEN $6 ELSE active_config_path END,
+			    updated_at = $4
+			WHERE id = $1
+			  AND auth_token_hash = $7
+			  AND registered_at IS NOT NULL
+			  AND status != 'disabled'
+		`, input.NodeID, validationStatus, validationError, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
 			return ConfigRevision{}, err
 		}
 	}
@@ -953,6 +994,7 @@ type rowScanner interface {
 
 func scanNode(row rowScanner) (Node, error) {
 	var node Node
+	var lastValidationAt sql.NullTime
 	var lastHealthAt sql.NullTime
 	var lastSeenAt sql.NullTime
 	var registeredAt sql.NullTime
@@ -967,6 +1009,11 @@ func scanNode(row rowScanner) (Node, error) {
 		&node.AgentVersion,
 		&node.XrayVersion,
 		&node.ActiveRevision,
+		&node.LastValidationStatus,
+		&node.LastValidationError,
+		&lastValidationAt,
+		&node.LastAppliedRevision,
+		&node.ActiveConfigPath,
 		&lastHealthAt,
 		&lastSeenAt,
 		&registeredAt,
@@ -974,6 +1021,9 @@ func scanNode(row rowScanner) (Node, error) {
 	)
 	if err != nil {
 		return Node{}, err
+	}
+	if lastValidationAt.Valid {
+		node.LastValidationAt = &lastValidationAt.Time
 	}
 	if lastHealthAt.Valid {
 		node.LastHealthAt = &lastHealthAt.Time
@@ -985,6 +1035,24 @@ func scanNode(row rowScanner) (Node, error) {
 		node.RegisteredAt = &registeredAt.Time
 	}
 	return node, nil
+}
+
+func normalizeValidationStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case "applied":
+		return "applied"
+	case "failed":
+		return "failed"
+	default:
+		return ""
+	}
+}
+
+func nullableTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC()
 }
 
 func scanConfigRevision(row rowScanner) (ConfigRevision, error) {
@@ -1052,7 +1120,7 @@ func (r *nodesRepository) transition(ctx context.Context, id string, decide func
 	defer tx.Rollback()
 
 	node, err := scanNode(tx.QueryRowContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		WHERE id = $1
 		FOR UPDATE
@@ -1081,7 +1149,7 @@ func (r *nodesRepository) transition(ctx context.Context, id string, decide func
 		    drain_state = $3,
 		    updated_at = now()
 		WHERE id = $1
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_health_at, last_seen_at, registered_at, updated_at
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 	`, id, next.Status, next.DrainState))
 	if err != nil {
 		return Node{}, err

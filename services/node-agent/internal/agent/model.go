@@ -31,6 +31,9 @@ type Status struct {
 	LastRollbackRevision      int       `json:"last_rollback_revision"`
 	StagedRevision            int       `json:"staged_revision"`
 	RollbackCandidateRevision int       `json:"rollback_candidate_revision"`
+	LastValidationStatus      string    `json:"last_validation_status,omitempty"`
+	LastValidationError       string    `json:"last_validation_error,omitempty"`
+	LastValidationAt          time.Time `json:"last_validation_at,omitempty"`
 	ConfigArtifactPath        string    `json:"config_artifact_path,omitempty"`
 	MetadataArtifactPath      string    `json:"metadata_artifact_path,omitempty"`
 }
@@ -51,11 +54,16 @@ type RegistrationResponse struct {
 }
 
 type HeartbeatPayload struct {
-	NodeID         string    `json:"node_id"`
-	AgentVersion   string    `json:"agent_version"`
-	Status         string    `json:"status"`
-	ActiveRevision int       `json:"active_revision"`
-	SentAt         time.Time `json:"sent_at"`
+	NodeID               string    `json:"node_id"`
+	AgentVersion         string    `json:"agent_version"`
+	Status               string    `json:"status"`
+	ActiveRevision       int       `json:"active_revision"`
+	LastValidationStatus string    `json:"last_validation_status,omitempty"`
+	LastValidationError  string    `json:"last_validation_error,omitempty"`
+	LastValidationAt     time.Time `json:"last_validation_at,omitempty"`
+	LastAppliedRevision  int       `json:"last_applied_revision,omitempty"`
+	ActiveConfigPath     string    `json:"active_config_path,omitempty"`
+	SentAt               time.Time `json:"sent_at"`
 }
 
 type ConfigRevision struct {
@@ -73,12 +81,17 @@ type ConfigRevision struct {
 }
 
 type ConfigRevisionReport struct {
-	Status         string    `json:"status"`
-	AppliedAt      time.Time `json:"applied_at,omitempty"`
-	FailedAt       time.Time `json:"failed_at,omitempty"`
-	ErrorMessage   string    `json:"error_message,omitempty"`
-	ActiveRevision int       `json:"active_revision,omitempty"`
-	SentAt         time.Time `json:"sent_at,omitempty"`
+	Status               string    `json:"status"`
+	AppliedAt            time.Time `json:"applied_at,omitempty"`
+	FailedAt             time.Time `json:"failed_at,omitempty"`
+	ErrorMessage         string    `json:"error_message,omitempty"`
+	ActiveRevision       int       `json:"active_revision,omitempty"`
+	LastValidationStatus string    `json:"last_validation_status,omitempty"`
+	LastValidationError  string    `json:"last_validation_error,omitempty"`
+	LastValidationAt     time.Time `json:"last_validation_at,omitempty"`
+	LastAppliedRevision  int       `json:"last_applied_revision,omitempty"`
+	ActiveConfigPath     string    `json:"active_config_path,omitempty"`
+	SentAt               time.Time `json:"sent_at,omitempty"`
 }
 
 type RollbackPlan struct {

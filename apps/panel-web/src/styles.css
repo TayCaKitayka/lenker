@@ -587,6 +587,40 @@ select {
   background: #fff7f7;
 }
 
+.runtime-status-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #dbe3ef;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.runtime-status-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.runtime-status-grid div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.runtime-status-grid dt {
+  color: #65758f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.runtime-status-grid dd {
+  margin: 6px 0 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .revision-failure-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -649,6 +683,7 @@ select {
   .form-grid,
   .details-grid,
   .node-detail-grid,
+  .runtime-status-grid,
   .revision-failure-grid {
     grid-template-columns: 1fr;
   }

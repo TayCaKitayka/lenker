@@ -175,8 +175,12 @@ before staged -> active. Panel-api also runs a lightweight renderer precheck
 before signing, but node-agent is the authoritative apply boundary. Rollback is
 a revision-level file switch foundation: panel-api can create a pending rollback
 revision from an applied source, and the agent applies it through the same
-validation and staged -> active local file path. No Xray daemon, reload, restart,
-or supervisor is controlled by this layer.
+validation and staged -> active local file path. The agent reports read-only
+runtime readiness metadata (`last_validation_status`, error, timestamp, last
+applied revision, and active config path) through the revision report and
+heartbeat contracts so panel admins can inspect the latest local validation
+result. No Xray daemon, reload, restart, or supervisor is controlled by this
+layer.
 
 ### Boundary 3: User App to Panel
 

@@ -152,6 +152,11 @@ export interface Node extends NodeSummary {
   country_code: string;
   hostname: string;
   xray_version: string;
+  last_validation_status?: "applied" | "failed" | "" | null;
+  last_validation_error?: string | null;
+  last_validation_at?: string | null;
+  last_applied_revision?: number;
+  active_config_path?: string;
   last_health_at?: string | null;
   updated_at: string;
 }

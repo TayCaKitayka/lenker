@@ -413,7 +413,11 @@ func TestHeartbeatSuccess(t *testing.T) {
 		"node_id": "node-1",
 		"agent_version": "0.1.0-dev",
 		"status": "active",
-		"active_revision": 7
+		"active_revision": 7,
+		"last_validation_status": "applied",
+		"last_validation_at": "2026-05-16T01:02:03Z",
+		"last_applied_revision": 7,
+		"active_config_path": "/var/lib/lenker/node-agent/active/config.json"
 	}`))
 	request.SetPathValue("id", "node-1")
 	request.Header.Set("Authorization", "Bearer node-token")
@@ -426,6 +430,12 @@ func TestHeartbeatSuccess(t *testing.T) {
 	}
 	if repo.heartbeat.NodeToken != "node-token" || repo.heartbeat.ActiveRevision != 7 {
 		t.Fatalf("unexpected heartbeat input: %#v", repo.heartbeat)
+	}
+	if !repo.heartbeat.RuntimeMetadataPresent || repo.heartbeat.LastValidationStatus != "applied" || repo.heartbeat.LastAppliedRevision != 7 {
+		t.Fatalf("expected runtime metadata heartbeat input: %#v", repo.heartbeat)
+	}
+	if !strings.Contains(response.Body.String(), `"last_validation_status":"applied"`) {
+		t.Fatalf("expected runtime metadata in heartbeat response: %s", response.Body.String())
 	}
 }
 
@@ -604,6 +614,9 @@ func TestReportConfigRevisionApplied(t *testing.T) {
 	if repo.reportedRevisionInput.Status != "applied" || repo.reportedRevisionInput.AppliedAt.IsZero() {
 		t.Fatalf("expected applied report input: %#v", repo.reportedRevisionInput)
 	}
+	if !repo.reportedRevisionInput.RuntimeMetadataPresent || repo.reportedRevisionInput.LastValidationStatus != "applied" {
+		t.Fatalf("expected applied runtime metadata report input: %#v", repo.reportedRevisionInput)
+	}
 	if !strings.Contains(response.Body.String(), `"status":"applied"`) {
 		t.Fatalf("expected revision response: %s", response.Body.String())
 	}
@@ -632,6 +645,9 @@ func TestReportConfigRevisionFailed(t *testing.T) {
 	}
 	if repo.reportedRevisionInput.Status != "failed" || repo.reportedRevisionInput.ErrorMessage != "invalid config bundle signature" {
 		t.Fatalf("expected failed report input: %#v", repo.reportedRevisionInput)
+	}
+	if repo.reportedRevisionInput.LastValidationStatus != "failed" || repo.reportedRevisionInput.LastValidationError != "invalid config bundle signature" {
+		t.Fatalf("expected failed runtime metadata report input: %#v", repo.reportedRevisionInput)
 	}
 	if !strings.Contains(response.Body.String(), `"error_message":"invalid config bundle signature"`) {
 		t.Fatalf("expected failed revision response: %s", response.Body.String())
@@ -794,12 +810,17 @@ func (r *fakeNodesRepository) RecordHeartbeat(ctx context.Context, input storage
 	}
 	now := time.Now().UTC()
 	return storage.Node{
-		ID:             input.NodeID,
-		Status:         input.Status,
-		DrainState:     "active",
-		AgentVersion:   input.AgentVersion,
-		ActiveRevision: input.ActiveRevision,
-		LastHealthAt:   &now,
+		ID:                   input.NodeID,
+		Status:               input.Status,
+		DrainState:           "active",
+		AgentVersion:         input.AgentVersion,
+		ActiveRevision:       input.ActiveRevision,
+		LastValidationStatus: input.LastValidationStatus,
+		LastValidationError:  input.LastValidationError,
+		LastValidationAt:     &now,
+		LastAppliedRevision:  input.LastAppliedRevision,
+		ActiveConfigPath:     input.ActiveConfigPath,
+		LastHealthAt:         &now,
 	}, nil
 }
 
@@ -927,18 +948,23 @@ func testConfigRevision(id string, nodeID string, revisionNumber int) storage.Co
 func testNode(id string) storage.Node {
 	now := time.Date(2026, 5, 15, 1, 2, 3, 0, time.UTC)
 	return storage.Node{
-		ID:             id,
-		Name:           "finland-1",
-		Region:         "eu",
-		CountryCode:    "FI",
-		Hostname:       id + ".example.com",
-		Status:         "active",
-		DrainState:     "active",
-		AgentVersion:   "0.1.0-dev",
-		ActiveRevision: 3,
-		LastSeenAt:     &now,
-		RegisteredAt:   &now,
-		UpdatedAt:      now,
+		ID:                   id,
+		Name:                 "finland-1",
+		Region:               "eu",
+		CountryCode:          "FI",
+		Hostname:             id + ".example.com",
+		Status:               "active",
+		DrainState:           "active",
+		AgentVersion:         "0.1.0-dev",
+		ActiveRevision:       3,
+		LastValidationStatus: "failed",
+		LastValidationError:  "xray_dry_run_failed:invalid_inbound",
+		LastValidationAt:     &now,
+		LastAppliedRevision:  2,
+		ActiveConfigPath:     "/var/lib/lenker/node-agent/active/config.json",
+		LastSeenAt:           &now,
+		RegisteredAt:         &now,
+		UpdatedAt:            now,
 	}
 }
 

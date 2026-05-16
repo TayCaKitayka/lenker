@@ -77,6 +77,43 @@ func TestScanConfigRevisionReturnsSignedPayloadAsBundle(t *testing.T) {
 	}
 }
 
+func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
+	now := time.Date(2026, 5, 16, 1, 2, 3, 0, time.UTC)
+	node, err := scanNode(fakeRow{
+		"node-1",
+		"finland-1",
+		"eu",
+		"FI",
+		"node-1.example.com",
+		"active",
+		"active",
+		"0.1.0-dev",
+		"",
+		4,
+		"failed",
+		"xray_dry_run_failed:invalid_inbound",
+		now,
+		3,
+		"/var/lib/lenker/node-agent/active/config.json",
+		now,
+		now,
+		now,
+		now,
+	})
+	if err != nil {
+		t.Fatalf("expected node: %v", err)
+	}
+	if node.LastValidationStatus != "failed" || node.LastValidationError != "xray_dry_run_failed:invalid_inbound" {
+		t.Fatalf("unexpected validation metadata: %#v", node)
+	}
+	if node.LastValidationAt == nil || !node.LastValidationAt.Equal(now) {
+		t.Fatalf("unexpected validation timestamp: %#v", node.LastValidationAt)
+	}
+	if node.LastAppliedRevision != 3 || node.ActiveConfigPath == "" {
+		t.Fatalf("unexpected runtime paths/revision: %#v", node)
+	}
+}
+
 type fakeRow []any
 
 func (r fakeRow) Scan(dest ...any) error {
@@ -98,6 +135,8 @@ func (r fakeRow) Scan(dest ...any) error {
 			if value, ok := r[i].(time.Time); ok {
 				*target = value
 			}
+		case interface{ Scan(any) error }:
+			_ = target.Scan(r[i])
 		default:
 			// Nullable SQL fields stay invalid for this focused contract test.
 		}

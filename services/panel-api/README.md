@@ -411,8 +411,10 @@ messages such as `xray_dry_run_failed:invalid_config`.
 
 Applied reports update revision status and node `active_revision`. Failed
 reports persist `failed_at` and `error_message`, and node `active_revision` does
-not move. The report path does not execute rollback, restart processes, or
-control Xray.
+not move. Report and heartbeat payloads can also persist node runtime readiness
+metadata: `last_validation_status`, `last_validation_error`,
+`last_validation_at`, `last_applied_revision`, and `active_config_path`. The
+report path does not execute rollback, restart processes, or control Xray.
 
 Rollback is represented as a normal pending revision created from a known-good
 applied revision:

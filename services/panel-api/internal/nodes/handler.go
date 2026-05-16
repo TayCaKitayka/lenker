@@ -303,11 +303,16 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		NodeID         string    `json:"node_id"`
-		AgentVersion   string    `json:"agent_version"`
-		Status         string    `json:"status"`
-		ActiveRevision int       `json:"active_revision"`
-		SentAt         time.Time `json:"sent_at"`
+		NodeID               string    `json:"node_id"`
+		AgentVersion         string    `json:"agent_version"`
+		Status               string    `json:"status"`
+		ActiveRevision       int       `json:"active_revision"`
+		LastValidationStatus string    `json:"last_validation_status"`
+		LastValidationError  string    `json:"last_validation_error"`
+		LastValidationAt     time.Time `json:"last_validation_at"`
+		LastAppliedRevision  int       `json:"last_applied_revision"`
+		ActiveConfigPath     string    `json:"active_config_path"`
+		SentAt               time.Time `json:"sent_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		httpapi.WriteBadRequest(w, "invalid JSON request body")
@@ -332,17 +337,33 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteBadRequest(w, "agent_version is required")
 		return
 	}
+	lastValidationStatus := strings.TrimSpace(request.LastValidationStatus)
+	if lastValidationStatus != "" && lastValidationStatus != "applied" && lastValidationStatus != "failed" {
+		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "last_validation_status must be applied or failed")
+		return
+	}
 	if request.SentAt.IsZero() {
 		request.SentAt = time.Now().UTC()
 	}
+	runtimeMetadataPresent := lastValidationStatus != "" ||
+		strings.TrimSpace(request.LastValidationError) != "" ||
+		!request.LastValidationAt.IsZero() ||
+		request.LastAppliedRevision > 0 ||
+		strings.TrimSpace(request.ActiveConfigPath) != ""
 
 	node, err := h.nodes.RecordHeartbeat(r.Context(), storage.HeartbeatInput{
-		NodeID:         nodeID,
-		NodeToken:      nodeToken,
-		AgentVersion:   strings.TrimSpace(request.AgentVersion),
-		Status:         status,
-		ActiveRevision: request.ActiveRevision,
-		SentAt:         request.SentAt.UTC(),
+		NodeID:                 nodeID,
+		NodeToken:              nodeToken,
+		AgentVersion:           strings.TrimSpace(request.AgentVersion),
+		Status:                 status,
+		ActiveRevision:         request.ActiveRevision,
+		RuntimeMetadataPresent: runtimeMetadataPresent,
+		LastValidationStatus:   lastValidationStatus,
+		LastValidationError:    strings.TrimSpace(request.LastValidationError),
+		LastValidationAt:       request.LastValidationAt,
+		LastAppliedRevision:    request.LastAppliedRevision,
+		ActiveConfigPath:       strings.TrimSpace(request.ActiveConfigPath),
+		SentAt:                 request.SentAt.UTC(),
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -365,11 +386,16 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 
 	h.recordNode(r, audit.ActionNodeHeartbeat, node.ID, audit.OutcomeSuccess, "")
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: map[string]any{
-		"node_id":         node.ID,
-		"status":          node.Status,
-		"drain_state":     node.DrainState,
-		"active_revision": node.ActiveRevision,
-		"last_seen_at":    node.LastSeenAt,
+		"node_id":                node.ID,
+		"status":                 node.Status,
+		"drain_state":            node.DrainState,
+		"active_revision":        node.ActiveRevision,
+		"last_validation_status": node.LastValidationStatus,
+		"last_validation_error":  node.LastValidationError,
+		"last_validation_at":     node.LastValidationAt,
+		"last_applied_revision":  node.LastAppliedRevision,
+		"active_config_path":     node.ActiveConfigPath,
+		"last_seen_at":           node.LastSeenAt,
 	}})
 }
 
@@ -424,12 +450,17 @@ func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Status         string    `json:"status"`
-		AppliedAt      time.Time `json:"applied_at"`
-		FailedAt       time.Time `json:"failed_at"`
-		ErrorMessage   string    `json:"error_message"`
-		ActiveRevision int       `json:"active_revision"`
-		SentAt         time.Time `json:"sent_at"`
+		Status               string    `json:"status"`
+		AppliedAt            time.Time `json:"applied_at"`
+		FailedAt             time.Time `json:"failed_at"`
+		ErrorMessage         string    `json:"error_message"`
+		ActiveRevision       int       `json:"active_revision"`
+		LastValidationStatus string    `json:"last_validation_status"`
+		LastValidationError  string    `json:"last_validation_error"`
+		LastValidationAt     time.Time `json:"last_validation_at"`
+		LastAppliedRevision  int       `json:"last_applied_revision"`
+		ActiveConfigPath     string    `json:"active_config_path"`
+		SentAt               time.Time `json:"sent_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		httpapi.WriteBadRequest(w, "invalid JSON request body")
@@ -441,16 +472,42 @@ func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "status must be applied or failed")
 		return
 	}
+	lastValidationStatus := strings.TrimSpace(request.LastValidationStatus)
+	if lastValidationStatus != "" && lastValidationStatus != "applied" && lastValidationStatus != "failed" {
+		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "last_validation_status must be applied or failed")
+		return
+	}
+	if lastValidationStatus == "" {
+		lastValidationStatus = status
+	}
+	lastValidationError := strings.TrimSpace(request.LastValidationError)
+	if lastValidationError == "" && status == "failed" {
+		lastValidationError = strings.TrimSpace(request.ErrorMessage)
+	}
+	lastValidationAt := request.LastValidationAt
+	if lastValidationAt.IsZero() {
+		if status == "applied" {
+			lastValidationAt = request.AppliedAt
+		} else {
+			lastValidationAt = request.FailedAt
+		}
+	}
 
 	revision, err := h.nodes.ReportConfigRevision(r.Context(), storage.ReportConfigRevisionInput{
-		NodeID:       nodeID,
-		NodeToken:    nodeToken,
-		RevisionID:   revisionID,
-		Status:       status,
-		AppliedAt:    request.AppliedAt,
-		FailedAt:     request.FailedAt,
-		ErrorMessage: strings.TrimSpace(request.ErrorMessage),
-		SentAt:       request.SentAt,
+		NodeID:                 nodeID,
+		NodeToken:              nodeToken,
+		RevisionID:             revisionID,
+		Status:                 status,
+		AppliedAt:              request.AppliedAt,
+		FailedAt:               request.FailedAt,
+		ErrorMessage:           strings.TrimSpace(request.ErrorMessage),
+		RuntimeMetadataPresent: true,
+		LastValidationStatus:   lastValidationStatus,
+		LastValidationError:    lastValidationError,
+		LastValidationAt:       lastValidationAt,
+		LastAppliedRevision:    request.LastAppliedRevision,
+		ActiveConfigPath:       strings.TrimSpace(request.ActiveConfigPath),
+		SentAt:                 request.SentAt,
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -527,20 +584,25 @@ func nodeSummaryResponse(node storage.Node) map[string]any {
 
 func nodeDetailResponse(node storage.Node) map[string]any {
 	return map[string]any{
-		"id":                 node.ID,
-		"name":               node.Name,
-		"region":             node.Region,
-		"country_code":       node.CountryCode,
-		"hostname":           node.Hostname,
-		"status":             node.Status,
-		"drain_state":        node.DrainState,
-		"agent_version":      node.AgentVersion,
-		"xray_version":       node.XrayVersion,
-		"active_revision_id": node.ActiveRevision,
-		"last_health_at":     node.LastHealthAt,
-		"last_seen_at":       node.LastSeenAt,
-		"registered_at":      node.RegisteredAt,
-		"updated_at":         node.UpdatedAt,
+		"id":                     node.ID,
+		"name":                   node.Name,
+		"region":                 node.Region,
+		"country_code":           node.CountryCode,
+		"hostname":               node.Hostname,
+		"status":                 node.Status,
+		"drain_state":            node.DrainState,
+		"agent_version":          node.AgentVersion,
+		"xray_version":           node.XrayVersion,
+		"active_revision_id":     node.ActiveRevision,
+		"last_validation_status": node.LastValidationStatus,
+		"last_validation_error":  node.LastValidationError,
+		"last_validation_at":     node.LastValidationAt,
+		"last_applied_revision":  node.LastAppliedRevision,
+		"active_config_path":     node.ActiveConfigPath,
+		"last_health_at":         node.LastHealthAt,
+		"last_seen_at":           node.LastSeenAt,
+		"registered_at":          node.RegisteredAt,
+		"updated_at":             node.UpdatedAt,
 	}
 }
 

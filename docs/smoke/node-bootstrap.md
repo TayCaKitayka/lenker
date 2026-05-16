@@ -198,6 +198,10 @@ payload. Set `LENKER_AGENT_XRAY_BIN=/path/to/xray` to enable the optional
 one-shot `xray run -test -config <candidate>` boundary. Leave it unset to use
 the default internal validation path.
 
+The node detail response also exposes read-only runtime readiness metadata after
+apply/failure: `last_validation_status`, `last_validation_error`,
+`last_validation_at`, `last_applied_revision`, and `active_config_path`.
+
 Report the pending revision as applied:
 
 ```sh
@@ -265,18 +269,19 @@ Expected result:
 - no Xray process is restarted or controlled.
 
 After metadata apply in the agent skeleton, heartbeat can report the applied
-revision number:
+revision number and runtime readiness metadata:
 
 ```sh
 curl -s http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/heartbeat \
   -H "Authorization: Bearer $LENKER_NODE_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d "{\"node_id\":\"$LENKER_NODE_ID\",\"agent_version\":\"0.1.0-dev\",\"status\":\"active\",\"active_revision\":1}"
+  -d "{\"node_id\":\"$LENKER_NODE_ID\",\"agent_version\":\"0.1.0-dev\",\"status\":\"active\",\"active_revision\":1,\"last_validation_status\":\"applied\",\"last_validation_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"last_applied_revision\":1,\"active_config_path\":\"/var/lib/lenker/node-agent/active/config.json\"}"
 ```
 
 Expected result:
 
 - `data.active_revision` matches the reported metadata revision.
+- `data.last_validation_status` is `applied`.
 
 ## 10. Drain And Undrain
 
