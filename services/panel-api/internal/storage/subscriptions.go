@@ -47,6 +47,27 @@ type subscriptionsRepository struct {
 	db *sql.DB
 }
 
+const createSubscriptionSQL = `
+	INSERT INTO subscriptions (
+		user_id,
+		plan_id,
+		status,
+		starts_at,
+		expires_at,
+		traffic_limit_bytes,
+		device_limit,
+		preferred_region
+	)
+	SELECT u.id, p.id, 'active', $3::timestamptz, $3::timestamptz + (p.duration_days * INTERVAL '1 day'),
+	       p.traffic_limit_bytes, p.device_limit, $4
+	FROM users u
+	JOIN plans p ON p.id = $2
+	            AND p.status = 'active'
+	WHERE u.id = $1
+	RETURNING id::text, user_id::text, plan_id::text, status, starts_at, expires_at,
+	          traffic_limit_bytes, traffic_used_bytes, device_limit, preferred_region
+`
+
 func NewSubscriptionsRepository(db *sql.DB) SubscriptionsRepository {
 	return &subscriptionsRepository{db: db}
 }
@@ -94,26 +115,7 @@ func (r *subscriptionsRepository) List(ctx context.Context) ([]Subscription, err
 func (r *subscriptionsRepository) Create(ctx context.Context, input CreateSubscriptionInput) (Subscription, error) {
 	var subscription Subscription
 	now := time.Now().UTC()
-	err := r.db.QueryRowContext(ctx, `
-		INSERT INTO subscriptions (
-			user_id,
-			plan_id,
-			status,
-			starts_at,
-			expires_at,
-			traffic_limit_bytes,
-			device_limit,
-			preferred_region
-		)
-		SELECT u.id, p.id, 'active', $3, $3 + (p.duration_days * INTERVAL '1 day'),
-		       p.traffic_limit_bytes, p.device_limit, $4
-		FROM users u
-		JOIN plans p ON p.id = $2
-		            AND p.status = 'active'
-		WHERE u.id = $1
-		RETURNING id::text, user_id::text, plan_id::text, status, starts_at, expires_at,
-		          traffic_limit_bytes, traffic_used_bytes, device_limit, preferred_region
-	`, input.UserID, input.PlanID, now, input.PreferredRegion).Scan(
+	err := r.db.QueryRowContext(ctx, createSubscriptionSQL, input.UserID, input.PlanID, now, input.PreferredRegion).Scan(
 		&subscription.ID,
 		&subscription.UserID,
 		&subscription.PlanID,
