@@ -366,6 +366,46 @@ func TestPollPendingConfigRevisionReportsFailedForTamperedRevision(t *testing.T)
 	}
 }
 
+func TestPollPendingConfigRevisionReportsFailedForInvalidXrayConfig(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	config := revision.Bundle["config"].(map[string]any)
+	inbound := config["inbounds"].([]any)[0].(map[string]any)
+	delete(inbound, "streamSettings")
+	resignTestConfigRevision(t, &revision)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	stateDir := t.TempDir()
+	activeDir := filepath.Join(stateDir, "active")
+	if err := os.MkdirAll(activeDir, 0o700); err != nil {
+		t.Fatalf("expected active dir: %v", err)
+	}
+	activeConfigPath := filepath.Join(activeDir, "config.json")
+	if err := os.WriteFile(activeConfigPath, []byte(`{"revision":"old"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("expected old active config: %v", err)
+	}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: stateDir})
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if !errors.Is(err, ErrInvalidXrayConfig) {
+		t.Fatalf("expected invalid xray config, got %v", err)
+	}
+	if applied {
+		t.Fatalf("invalid xray config must not be applied")
+	}
+	if service.Status().ActiveRevision != 0 || service.Status().LastAppliedRevision != 0 {
+		t.Fatalf("invalid xray config must not advance status: %#v", service.Status())
+	}
+	body, err := os.ReadFile(activeConfigPath)
+	if err != nil {
+		t.Fatalf("expected active config to remain readable: %v", err)
+	}
+	if string(body) != `{"revision":"old"}`+"\n" {
+		t.Fatalf("validation failure changed active config: %s", string(body))
+	}
+	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != "invalid_xray_config:missing_stream_settings" {
+		t.Fatalf("expected failed validation report, got %#v", client.report)
+	}
+}
+
 func TestPollPendingConfigRevisionReportFailureHandled(t *testing.T) {
 	revision := signedTestConfigRevision(t, "node-1", 4, 3)
 	client := &fakePendingConfigRevisionClient{revision: revision, ok: true, reportErr: ErrUnexpectedPanelResponse}
@@ -516,7 +556,7 @@ func TestApplyRollbackRevisionSwitchesActiveConfigToSourceSemantics(t *testing.T
 	service := NewService(Identity{NodeID: "node-1", StateDir: stateDir})
 	revisionA := signedTestConfigRevision(t, "node-1", 1, 0)
 	revisionB := signedTestConfigRevision(t, "node-1", 2, 1)
-	revisionB.Bundle["config"].(map[string]any)["routing"] = map[string]any{"domainStrategy": "IPIfNonMatch"}
+	revisionB.Bundle["config"].(map[string]any)["log"] = map[string]any{"loglevel": "error"}
 	resignTestConfigRevision(t, &revisionB)
 	rollbackRevision := signedTestConfigRevision(t, "node-1", 3, 2)
 	rollbackRevision.Bundle["config"] = revisionA.Bundle["config"]
@@ -547,6 +587,55 @@ func TestApplyRollbackRevisionSwitchesActiveConfigToSourceSemantics(t *testing.T
 	}
 	if service.Status().ActiveRevision != 3 || service.Status().RollbackCandidateRevision != 2 {
 		t.Fatalf("unexpected rollback status: %#v", service.Status())
+	}
+}
+
+func TestInvalidRollbackRevisionReportsFailedAndKeepsPreviousActive(t *testing.T) {
+	stateDir := t.TempDir()
+	service := NewService(Identity{NodeID: "node-1", StateDir: stateDir})
+	revisionA := signedTestConfigRevision(t, "node-1", 1, 0)
+	if err := service.ApplyConfigRevision(revisionA); err != nil {
+		t.Fatalf("expected revision A apply: %v", err)
+	}
+	previousActive, err := os.ReadFile(service.Status().ConfigArtifactPath)
+	if err != nil {
+		t.Fatalf("expected previous active config: %v", err)
+	}
+
+	rollbackRevision := signedTestConfigRevision(t, "node-1", 2, 1)
+	rollbackRevision.Bundle["operation_kind"] = "rollback"
+	rollbackRevision.Bundle["source_revision_id"] = revisionA.ID
+	rollbackRevision.Bundle["source_revision_number"] = revisionA.RevisionNumber
+	config := rollbackRevision.Bundle["config"].(map[string]any)
+	routing := config["routing"].(map[string]any)
+	rules := routing["rules"].([]any)
+	rule := rules[0].(map[string]any)
+	rule["outboundTag"] = "missing"
+	resignTestConfigRevision(t, &rollbackRevision)
+	client := &fakePendingConfigRevisionClient{revision: rollbackRevision, ok: true}
+	pollingService := NewService(Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: stateDir})
+	pollingService.status.ActiveRevision = 1
+	pollingService.status.LastAppliedRevision = 1
+
+	applied, err := pollingService.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if !errors.Is(err, ErrInvalidXrayConfig) {
+		t.Fatalf("expected invalid xray config, got %v", err)
+	}
+	if applied {
+		t.Fatalf("invalid rollback revision must not be applied")
+	}
+	currentActive, err := os.ReadFile(filepath.Join(stateDir, "active", "config.json"))
+	if err != nil {
+		t.Fatalf("expected active config after failed rollback: %v", err)
+	}
+	if string(currentActive) != string(previousActive) {
+		t.Fatalf("failed rollback changed active config:\n%s\n---\n%s", string(currentActive), string(previousActive))
+	}
+	if pollingService.Status().ActiveRevision != 1 || pollingService.Status().LastAppliedRevision != 1 {
+		t.Fatalf("failed rollback must keep active revision: %#v", pollingService.Status())
+	}
+	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != "invalid_xray_config:invalid_routing_outbound_reference" {
+		t.Fatalf("expected failed rollback validation report, got %#v", client.report)
 	}
 }
 
@@ -606,17 +695,54 @@ func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, r
 						"network":  "tcp",
 						"security": "reality",
 						"realitySettings": map[string]any{
-							"show":        false,
-							"dest":        "www.cloudflare.com:443",
-							"serverNames": []any{"www.cloudflare.com"},
-							"privateKey":  "lenker-placeholder-reality-private-key",
-							"shortIds":    []any{"lenker00"},
+							"show":         false,
+							"dest":         "www.cloudflare.com:443",
+							"xver":         0,
+							"serverNames":  []any{"www.cloudflare.com"},
+							"privateKey":   "lenker-placeholder-reality-private-key",
+							"shortIds":     []any{"lenker00"},
+							"minClientVer": "",
+							"maxClientVer": "",
+							"maxTimeDiff":  0,
 						},
 					},
 				},
 			},
-			"outbounds": []any{},
-			"routing":   map[string]any{},
+			"outbounds": []any{
+				map[string]any{
+					"tag":      "direct",
+					"protocol": "freedom",
+				},
+			},
+			"routing": map[string]any{
+				"domainStrategy": "AsIs",
+				"rules": []any{
+					map[string]any{
+						"type":        "field",
+						"inboundTag":  []any{"vless-reality-in"},
+						"outboundTag": "direct",
+					},
+				},
+			},
+			"policy": map[string]any{
+				"levels": map[string]any{
+					"0": map[string]any{
+						"handshake":         4,
+						"connIdle":          300,
+						"uplinkOnly":        2,
+						"downlinkOnly":      5,
+						"statsUserUplink":   true,
+						"statsUserDownlink": true,
+					},
+				},
+				"system": map[string]any{
+					"statsInboundUplink":    true,
+					"statsInboundDownlink":  true,
+					"statsOutboundUplink":   true,
+					"statsOutboundDownlink": true,
+				},
+			},
+			"stats": map[string]any{},
 		},
 		"subscription_inputs": []any{
 			map[string]any{

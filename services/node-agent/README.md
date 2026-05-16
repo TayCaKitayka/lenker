@@ -108,15 +108,21 @@ The agent has a small panel client for fetching the latest pending signed
 revision metadata with `Authorization: Bearer <node_token>`. A polling loop runs
 on `LENKER_AGENT_CONFIG_POLL_INTERVAL`, treats `404 not_found` as no-op, rejects
 unauthorized or malformed responses, validates the bundle hash and deterministic
-dev signature, verifies the deterministic subscription-aware VLESS Reality Xray
-config skeleton payload shape, stores metadata in memory, serializes local
-config artifacts through a staged -> active file switch, and updates the
-active/applied revision in status and heartbeat payloads after the active switch
-succeeds.
+dev signature, enforces the deterministic subscription-aware VLESS Reality Xray
+compatibility gate, stores metadata in memory, serializes local config artifacts
+through a staged -> active file switch, and updates the active/applied revision
+in status and heartbeat payloads after the active switch succeeds.
+
+The validation gate is focused on the current single MVP path. It requires the
+rendered config object to contain `log`, `policy`, `stats`, one VLESS inbound,
+TCP + Reality stream settings, coherent VLESS client entries, a direct/freedom
+outbound, and routing rules that reference known inbound/outbound tags. It is
+not a full Xray schema validator and it does not run the Xray binary.
 
 After validation, the agent reports `applied` to panel-api. Validation failures
-such as bad hash, bad signature, malformed payload, or local artifact write
-failure are reported as `failed` with a concise `error_message`.
+such as bad hash, bad signature, malformed payload, incompatible Xray config, or
+local artifact write failure are reported as `failed` with a concise
+`error_message` such as `invalid_xray_config:missing_stream_settings`.
 
 Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 

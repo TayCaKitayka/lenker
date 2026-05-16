@@ -165,12 +165,15 @@ for one VLESS + Reality + XTLS Vision inbound. A node-facing endpoint lets the
 node-agent fetch the latest pending signed revision with the node Bearer token.
 
 The node-agent polling loop fetches pending revisions, verifies hash/signature
-and payload shape, writes revision-specific and staged artifacts, switches
-active local config files only after staging succeeds, stores metadata in memory,
-and reports `applied` or `failed` status back to the panel. Rollback is a
-revision-level file switch foundation: panel-api can create a pending rollback
-revision from an applied source, and the agent applies it through the same
-staged -> active local file path. No Xray process is controlled by this layer.
+and payload shape, enforces an explicit Xray compatibility gate for the current
+VLESS + Reality + XTLS Vision shape, writes revision-specific and staged
+artifacts, switches active local config files only after staging succeeds, stores
+metadata in memory, and reports `applied` or `failed` status back to the panel.
+Panel-api also runs a lightweight renderer precheck before signing, but
+node-agent is the authoritative apply boundary. Rollback is a revision-level
+file switch foundation: panel-api can create a pending rollback revision from an
+applied source, and the agent applies it through the same staged -> active local
+file path. No Xray process is controlled by this layer.
 
 ### Boundary 3: User App to Panel
 

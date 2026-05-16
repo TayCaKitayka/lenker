@@ -283,7 +283,9 @@ skeleton payloads for the single MVP path. It derives `subscription_inputs` and
 region. The rendered `config` object follows an Xray-like shape with `log`,
 `policy`, `stats`, VLESS Reality `inbounds`, `outbounds`, and `routing`. It
 stores revision number, status, bundle hash, signature, signer, rollback target
-metadata, and timestamps. It does not restart processes.
+metadata, and timestamps. Panel-api runs a lightweight renderer precheck before
+signing; node-agent enforces the authoritative compatibility gate before staged
+files become active. It does not restart processes.
 
 #### `GET /nodes/{nodeId}/config-revisions`
 
@@ -317,8 +319,10 @@ This node-facing endpoint requires `Authorization: Bearer <node_token>`, checks
 that the token belongs to the node in the path, and allows the node to report
 only its own revision as `applied` or `failed`. Applied reports set the revision
 `applied_at` timestamp and update the node active revision. Failed reports set
-`failed_at` and persist a concise `error_message`. It does not execute
-rollback, restart processes, or control Xray.
+`failed_at` and persist a concise `error_message`; node active revision is not
+advanced on failed validation. Xray compatibility failures use stable summaries
+such as `invalid_xray_config:invalid_routing_outbound_reference`. It does not
+execute rollback, restart processes, or control Xray.
 
 #### `POST /nodes/{nodeId}/config-revisions/{revisionId}/rollback`
 

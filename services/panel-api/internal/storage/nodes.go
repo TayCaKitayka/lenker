@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -514,6 +515,9 @@ func (r *nodesRepository) CreateDummyConfigRevision(ctx context.Context, input C
 		RollbackTargetRevision: currentRevision,
 		SubscriptionInputs:     subscriptionInputs,
 	})
+	if err := configrender.ValidateVLESSRealityPayload(payload); err != nil {
+		return ConfigRevision{}, fmt.Errorf("%w: %v", ErrInvalidNodeTransition, err)
+	}
 	bundleHash, err := configbundle.HashPayload(payload)
 	if err != nil {
 		return ConfigRevision{}, err
@@ -629,6 +633,9 @@ func (r *nodesRepository) CreateRollbackConfigRevision(ctx context.Context, inpu
 	})
 	if err != nil {
 		return ConfigRevision{}, err
+	}
+	if err := configrender.ValidateVLESSRealityPayload(payload); err != nil {
+		return ConfigRevision{}, fmt.Errorf("%w: %v", ErrInvalidNodeTransition, err)
 	}
 	bundleHash, err := configbundle.HashPayload(payload)
 	if err != nil {

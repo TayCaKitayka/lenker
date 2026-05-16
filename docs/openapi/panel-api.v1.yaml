@@ -589,7 +589,7 @@ paths:
     post:
       tags: [Nodes]
       summary: Report node config revision apply status
-      description: Node-agent endpoint. Requires the node Bearer token and records applied or failed metadata status for a pending revision owned by the node. It does not execute rollback or control Xray.
+      description: Node-agent endpoint. Requires the node Bearer token and records applied or failed metadata status for a pending revision owned by the node. Applied means the node-agent verified hash/signature, passed the Xray compatibility validation gate, and completed the local staged-to-active file switch. Failed reports keep node active_revision unchanged and may include compact reasons such as invalid_xray_config:missing_stream_settings. This endpoint does not execute rollback or control Xray.
       requestBody:
         required: true
         content:
@@ -1260,6 +1260,7 @@ components:
           nullable: true
         error_message:
           type: string
+          description: Compact node-agent failure reason. Xray compatibility validation failures use invalid_xray_config:<reason>.
           nullable: true
     ConfigRevisionReportRequest:
       type: object

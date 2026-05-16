@@ -349,6 +349,11 @@ uses Xray-like `log`, `policy`, `stats`, `inbounds`, `outbounds`, and `routing`
 sections for the single VLESS + Reality + XTLS Vision path. The panel still does
 not write runtime Xray config files, restart or control Xray.
 
+Panel-api runs a lightweight render precheck before signing new deploy or
+rollback revisions. The authoritative Xray compatibility gate lives in
+node-agent, where the signed config object must pass the single-path VLESS
+Reality validation contract before staged files can become active.
+
 Create a config revision metadata record:
 
 ```sh
@@ -390,18 +395,19 @@ curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<r
   -d '{"status":"applied","active_revision":1}'
 ```
 
-Failed metadata validation can be reported as:
+Failed validation can be reported as:
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<revision_id>/report \
   -H "Authorization: Bearer <node_token>" \
   -H 'Content-Type: application/json' \
-  -d '{"status":"failed","error_message":"invalid config payload"}'
+  -d '{"status":"failed","error_message":"invalid_xray_config:missing_stream_settings"}'
 ```
 
 Applied reports update revision status and node `active_revision`. Failed
-reports persist `failed_at` and `error_message`. The report path does not
-execute rollback, restart processes, or control Xray.
+reports persist `failed_at` and `error_message`, and node `active_revision` does
+not move. The report path does not execute rollback, restart processes, or
+control Xray.
 
 Rollback is represented as a normal pending revision created from a known-good
 applied revision:

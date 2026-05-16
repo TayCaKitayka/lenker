@@ -483,25 +483,16 @@ func validateRenderedConfigPayload(revision ConfigRevision) error {
 	if !ok {
 		return ErrInvalidConfigPayload
 	}
+	if operationKind, ok := revision.Bundle["operation_kind"].(string); !ok || (operationKind != "deploy" && operationKind != "rollback") {
+		return ErrInvalidConfigPayload
+	}
 	if _, ok := revision.Bundle["subscription_inputs"].([]any); !ok {
 		return ErrInvalidConfigPayload
 	}
 	if _, ok := revision.Bundle["access_entries"].([]any); !ok {
 		return ErrInvalidConfigPayload
 	}
-	if _, ok := config["inbounds"].([]any); !ok {
-		return ErrInvalidConfigPayload
-	}
-	if _, ok := config["outbounds"].([]any); !ok {
-		return ErrInvalidConfigPayload
-	}
-	if _, ok := config["routing"].(map[string]any); !ok {
-		return ErrInvalidConfigPayload
-	}
-	if _, ok := config["log"].(map[string]any); !ok {
-		return ErrInvalidConfigPayload
-	}
-	return nil
+	return ValidateXrayConfigArtifact(config)
 }
 
 func stringFromBundle(bundle map[string]any, key string) string {
@@ -536,6 +527,12 @@ func configRevisionErrorMessage(err error) string {
 		return "invalid config bundle hash"
 	case errors.Is(err, ErrInvalidConfigSignature):
 		return "invalid config bundle signature"
+	case errors.Is(err, ErrInvalidXrayConfig):
+		var validationErr ConfigValidationError
+		if errors.As(err, &validationErr) && validationErr.Reason != "" {
+			return "invalid_xray_config:" + validationErr.Reason
+		}
+		return "invalid_xray_config"
 	case errors.Is(err, ErrInvalidConfigPayload):
 		return "invalid config payload"
 	case errors.Is(err, ErrInvalidConfigRevision):

@@ -191,9 +191,9 @@ Expected result:
 - if no pending revision exists, the endpoint returns `not_found`.
 
 The node-agent unit tests verify that the fetched metadata can be hash/signature
-validated, checked for the expected config skeleton payload shape, serialized to
-local config artifacts, stored in memory, and reflected in the heartbeat active
-revision payload.
+validated, checked against the single-path Xray compatibility gate, serialized
+to local config artifacts, stored in memory, and reflected in the heartbeat
+active revision payload.
 
 Report the pending revision as applied:
 
@@ -218,11 +218,20 @@ Validation failures can be reported as failed:
 curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions/$LENKER_REVISION_ID/report \
   -H "Authorization: Bearer $LENKER_NODE_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"status":"failed","error_message":"invalid config payload"}'
+  -d '{"status":"failed","error_message":"invalid_xray_config:missing_stream_settings"}'
 ```
 
+Expected result:
+
+- `data.status` is `failed`;
+- `data.failed_at` is set;
+- `data.error_message` contains the compact failure reason;
+- node `active_revision` does not advance.
+
 This smoke path still does not restart processes or control Xray. The node-agent
-serialization foundation writes local artifacts only under its state directory:
+compatibility and serialization foundation writes local artifacts only under its
+state directory after hash/signature validation and Xray compatibility validation
+both pass:
 
 ```text
 revisions/<revision_number>/config.json

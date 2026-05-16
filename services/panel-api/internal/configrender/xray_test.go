@@ -2,6 +2,7 @@ package configrender
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/lenker/lenker/services/panel-api/internal/configbundle"
@@ -44,6 +45,38 @@ func TestRenderVLESSRealityPayloadHashStable(t *testing.T) {
 	}
 	if firstHash != secondHash {
 		t.Fatalf("expected stable hash")
+	}
+}
+
+func TestRenderVLESSRealityPayloadPassesValidation(t *testing.T) {
+	payload := RenderVLESSRealityPayload(RenderInput{
+		NodeID:         "node-1",
+		RevisionNumber: 7,
+		SubscriptionInputs: []SubscriptionInput{
+			{SubscriptionID: "sub-a", UserID: "user-a", PlanID: "plan-a", UserStatus: "active", SubscriptionStatus: "active", DeviceLimit: 2, StartsAt: "2026-05-01T00:00:00Z", ExpiresAt: "2026-06-01T00:00:00Z"},
+		},
+	})
+
+	if err := ValidateVLESSRealityPayload(payload); err != nil {
+		t.Fatalf("expected rendered payload to pass validation: %v", err)
+	}
+}
+
+func TestValidateVLESSRealityPayloadRejectsBrokenRoutingReference(t *testing.T) {
+	payload := RenderVLESSRealityPayload(RenderInput{NodeID: "node-1", RevisionNumber: 7})
+	config := payload["config"].(map[string]any)
+	routing := config["routing"].(map[string]any)
+	rules := routing["rules"].([]any)
+	rule := rules[0].(map[string]any)
+	rule["outboundTag"] = "missing"
+
+	err := ValidateVLESSRealityPayload(payload)
+	if !errors.Is(err, ErrInvalidXrayConfig) {
+		t.Fatalf("expected invalid xray config, got %v", err)
+	}
+	var validationErr ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Reason != "invalid_routing_outbound_reference" {
+		t.Fatalf("unexpected validation error: %v", err)
 	}
 }
 
