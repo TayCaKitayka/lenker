@@ -291,6 +291,19 @@ List stored config revision metadata for a node.
 Return one config revision metadata record and verify it belongs to the node in
 the path.
 
+#### `GET /nodes/{nodeId}/config-revisions/pending`
+
+Return the latest pending signed config revision metadata for the node agent.
+
+Current implementation note:
+
+This node-facing endpoint requires `Authorization: Bearer <node_token>`, checks
+that the token belongs to the node in the path, and returns only the latest
+pending dummy signed bundle metadata for that node. If the node is unknown, the
+token does not match, the node is disabled, or no pending revision exists, it
+returns `not_found`. It does not apply config, generate Xray JSON, restart
+processes, or execute rollback.
+
 #### `POST /nodes/{nodeId}/rollback`
 
 Roll back to the last known good config revision.

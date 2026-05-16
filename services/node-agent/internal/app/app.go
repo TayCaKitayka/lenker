@@ -22,6 +22,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 	agentService := agent.NewService(agent.Identity{
 		NodeID:         cfg.NodeID,
 		BootstrapToken: cfg.BootstrapToken,
+		NodeToken:      cfg.NodeToken,
 		PanelURL:       cfg.PanelURL,
 	})
 

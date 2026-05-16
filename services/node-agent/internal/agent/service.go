@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -112,6 +113,38 @@ func (s *Service) ValidateAndStoreConfigRevision(revision ConfigRevision) error 
 	s.status.ActiveRevision = revision.RevisionNumber
 	s.status.LastRollbackRevision = revision.RollbackTargetRevision
 	return nil
+}
+
+func (s *Service) ApplyConfigRevisionMetadata(revision ConfigRevision) error {
+	if err := s.ValidateAndStoreConfigRevision(revision); err != nil {
+		return err
+	}
+	s.TrackAppliedRevision(revision)
+	return nil
+}
+
+func (s *Service) FetchAndApplyPendingConfigRevision(ctx context.Context, client PendingConfigRevisionClient) (bool, error) {
+	if client == nil {
+		return false, ErrUnexpectedPanelResponse
+	}
+	if s.identity.NodeID == "" {
+		return false, ErrNodeIDRequired
+	}
+	if s.identity.NodeToken == "" {
+		return false, ErrNodeTokenRequired
+	}
+
+	revision, ok, err := client.FetchPendingConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	if err := s.ApplyConfigRevisionMetadata(revision); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) ConfigRevision(revisionNumber int) (ConfigRevision, bool) {

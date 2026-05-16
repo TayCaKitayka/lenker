@@ -434,6 +434,100 @@ func TestHeartbeatValidation(t *testing.T) {
 	}
 }
 
+func TestGetPendingConfigRevisionSuccess(t *testing.T) {
+	repo := &fakeNodesRepository{pendingRevision: testConfigRevision("revision-2", "node-1", 2)}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/node-1/config-revisions/pending", nil)
+	request.SetPathValue("id", "node-1")
+	request.Header.Set("Authorization", "Bearer node-token")
+	response := httptest.NewRecorder()
+
+	handler.GetPendingConfigRevision(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.pendingRevisionNodeID != "node-1" || repo.pendingRevisionNodeToken != "node-token" {
+		t.Fatalf("unexpected pending revision lookup: node=%q token=%q", repo.pendingRevisionNodeID, repo.pendingRevisionNodeToken)
+	}
+	if !strings.Contains(response.Body.String(), `"revision_number":2`) {
+		t.Fatalf("expected pending revision response: %s", response.Body.String())
+	}
+}
+
+func TestGetPendingConfigRevisionRequiresBearer(t *testing.T) {
+	repo := &fakeNodesRepository{}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/node-1/config-revisions/pending", nil)
+	request.SetPathValue("id", "node-1")
+	response := httptest.NewRecorder()
+
+	handler.GetPendingConfigRevision(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.pendingRevisionNodeID != "" {
+		t.Fatalf("pending revision lookup should not run without bearer token")
+	}
+}
+
+func TestGetPendingConfigRevisionRejectsWrongToken(t *testing.T) {
+	repo := &fakeNodesRepository{pendingRevisionErr: storage.ErrNotFound}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/node-1/config-revisions/pending", nil)
+	request.SetPathValue("id", "node-1")
+	request.Header.Set("Authorization", "Bearer wrong-token")
+	response := httptest.NewRecorder()
+
+	handler.GetPendingConfigRevision(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestGetPendingConfigRevisionDoesNotReturnAnotherNodeRevision(t *testing.T) {
+	repo := &fakeNodesRepository{pendingRevisionErr: storage.ErrNotFound}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/node-2/config-revisions/pending", nil)
+	request.SetPathValue("id", "node-2")
+	request.Header.Set("Authorization", "Bearer node-1-token")
+	response := httptest.NewRecorder()
+
+	handler.GetPendingConfigRevision(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "revision_number") {
+		t.Fatalf("must not return another node revision: %s", response.Body.String())
+	}
+}
+
+func TestGetPendingConfigRevisionNotFound(t *testing.T) {
+	repo := &fakeNodesRepository{pendingRevisionErr: storage.ErrNotFound}
+	handler := NewHandler(nil, repo, nil)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/node-1/config-revisions/pending", nil)
+	request.SetPathValue("id", "node-1")
+	request.Header.Set("Authorization", "Bearer node-token")
+	response := httptest.NewRecorder()
+
+	handler.GetPendingConfigRevision(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "not_found") {
+		t.Fatalf("expected not_found response: %s", response.Body.String())
+	}
+}
+
 func testRegisterTokenError(t *testing.T, err error, expectedStatus int, expectedCode string) {
 	t.Helper()
 
@@ -456,29 +550,33 @@ func testRegisterTokenError(t *testing.T, err error, expectedStatus int, expecte
 }
 
 type fakeNodesRepository struct {
-	bootstrap           storage.CreateBootstrapTokenInput
-	bootstrapCalled     bool
-	nodes               []storage.Node
-	node                storage.Node
-	listCalled          bool
-	foundID             string
-	findErr             error
-	lifecycleAction     string
-	lifecycleID         string
-	lifecycleErr        error
-	registered          storage.RegisterNodeInput
-	registerErr         error
-	heartbeat           storage.HeartbeatInput
-	heartbeatErr        error
-	createdRevision     storage.CreateDummyConfigRevisionInput
-	revision            storage.ConfigRevision
-	revisions           []storage.ConfigRevision
-	createRevisionErr   error
-	listRevisionsNodeID string
-	listRevisionsErr    error
-	findRevisionNodeID  string
-	findRevisionID      string
-	findRevisionErr     error
+	bootstrap                storage.CreateBootstrapTokenInput
+	bootstrapCalled          bool
+	nodes                    []storage.Node
+	node                     storage.Node
+	listCalled               bool
+	foundID                  string
+	findErr                  error
+	lifecycleAction          string
+	lifecycleID              string
+	lifecycleErr             error
+	registered               storage.RegisterNodeInput
+	registerErr              error
+	heartbeat                storage.HeartbeatInput
+	heartbeatErr             error
+	createdRevision          storage.CreateDummyConfigRevisionInput
+	revision                 storage.ConfigRevision
+	revisions                []storage.ConfigRevision
+	createRevisionErr        error
+	listRevisionsNodeID      string
+	listRevisionsErr         error
+	findRevisionNodeID       string
+	findRevisionID           string
+	findRevisionErr          error
+	pendingRevision          storage.ConfigRevision
+	pendingRevisionNodeID    string
+	pendingRevisionNodeToken string
+	pendingRevisionErr       error
 }
 
 func (r *fakeNodesRepository) List(ctx context.Context) ([]storage.Node, error) {
@@ -587,6 +685,18 @@ func (r *fakeNodesRepository) FindConfigRevision(ctx context.Context, nodeID str
 		return storage.ConfigRevision{}, r.findRevisionErr
 	}
 	return r.revision, nil
+}
+
+func (r *fakeNodesRepository) FindLatestPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (storage.ConfigRevision, error) {
+	r.pendingRevisionNodeID = nodeID
+	r.pendingRevisionNodeToken = nodeToken
+	if r.pendingRevisionErr != nil {
+		return storage.ConfigRevision{}, r.pendingRevisionErr
+	}
+	if r.pendingRevision.ID != "" {
+		return r.pendingRevision, nil
+	}
+	return testConfigRevision("revision-1", nodeID, 1), nil
 }
 
 func (r *fakeNodesRepository) lifecycle(action string, id string, update func(storage.Node) storage.Node) (storage.Node, error) {

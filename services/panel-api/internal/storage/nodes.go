@@ -112,6 +112,7 @@ type NodesRepository interface {
 	CreateDummyConfigRevision(ctx context.Context, input CreateDummyConfigRevisionInput) (ConfigRevision, error)
 	ListConfigRevisions(ctx context.Context, nodeID string) ([]ConfigRevision, error)
 	FindConfigRevision(ctx context.Context, nodeID string, revisionID string) (ConfigRevision, error)
+	FindLatestPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, error)
 }
 
 type nodesRepository struct {
@@ -566,6 +567,28 @@ func (r *nodesRepository) FindConfigRevision(ctx context.Context, nodeID string,
 		WHERE node_id = $1
 		  AND id = $2
 	`, nodeID, revisionID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ConfigRevision{}, ErrNotFound
+		}
+		return ConfigRevision{}, err
+	}
+	return revision, nil
+}
+
+func (r *nodesRepository) FindLatestPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, error) {
+	revision, err := scanConfigRevision(r.db.QueryRowContext(ctx, `
+		SELECT cr.id::text, cr.node_id::text, cr.revision_number, cr.bundle_hash, cr.signature, cr.signer, cr.status, cr.rollback_target_revision, cr.bundle_json, cr.created_at, cr.applied_at, cr.failed_at, cr.rolled_back_at, cr.error_message
+		FROM config_revisions cr
+		JOIN nodes n ON n.id = cr.node_id
+		WHERE cr.node_id = $1
+		  AND n.auth_token_hash = $2
+		  AND n.registered_at IS NOT NULL
+		  AND n.status != 'disabled'
+		  AND cr.status = 'pending'
+		ORDER BY cr.revision_number DESC
+		LIMIT 1
+	`, nodeID, HashNodeToken(nodeToken)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ConfigRevision{}, ErrNotFound

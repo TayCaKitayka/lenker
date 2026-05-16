@@ -153,7 +153,55 @@ Expected result:
 - details include `status`, `drain_state`, `last_seen_at`, `registered_at`,
   `agent_version`, and `active_revision_id`.
 
-## 9. Drain And Undrain
+## 9. Create And Fetch Pending Config Revision Metadata
+
+Create signed dummy config revision metadata as an admin:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Expected result:
+
+- response contains `data.revision_number`;
+- response contains `data.bundle_hash`, `data.signature`, `data.signer`, and
+  `data.bundle`;
+- this is dummy metadata only, not real Xray config.
+
+Fetch the latest pending revision as the node-agent:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions/pending \
+  -H "Authorization: Bearer $LENKER_NODE_TOKEN"
+```
+
+Expected result:
+
+- response contains the latest pending revision for this node;
+- using another node token or a missing token does not return this revision;
+- if no pending revision exists, the endpoint returns `not_found`.
+
+The node-agent unit tests verify that the fetched metadata can be hash/signature
+validated, stored in memory, and reflected in the heartbeat active revision
+payload. This smoke path still does not write Xray config files, restart
+processes, or execute rollback.
+
+After metadata apply in the agent skeleton, heartbeat can report the applied
+revision number:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/heartbeat \
+  -H "Authorization: Bearer $LENKER_NODE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"node_id\":\"$LENKER_NODE_ID\",\"agent_version\":\"0.1.0-dev\",\"status\":\"active\",\"active_revision\":1}"
+```
+
+Expected result:
+
+- `data.active_revision` matches the reported metadata revision.
+
+## 10. Drain And Undrain
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/drain \
@@ -174,7 +222,7 @@ Expected result:
 
 - `data.drain_state` is `active`.
 
-## 10. Disable And Enable
+## 11. Disable And Enable
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/disable \

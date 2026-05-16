@@ -48,6 +48,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("POST /api/v1/nodes/register", h.Register)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/heartbeat", h.Heartbeat)
+	mux.HandleFunc("GET /api/v1/nodes/{id}/config-revisions/pending", h.GetPendingConfigRevision)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -340,6 +341,38 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		"active_revision": node.ActiveRevision,
 		"last_seen_at":    node.LastSeenAt,
 	}})
+}
+
+func (h *Handler) GetPendingConfigRevision(w http.ResponseWriter, r *http.Request) {
+	nodeToken, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		httpapi.WriteUnauthorized(w)
+		return
+	}
+
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	if nodeID == "" {
+		httpapi.WriteBadRequest(w, "node id is required")
+		return
+	}
+
+	revision, err := h.nodes.FindLatestPendingConfigRevision(r.Context(), nodeID, nodeToken)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			h.recordNode(r, audit.ActionNodeConfigRevisionFetch, nodeID, audit.OutcomeFailure, "not_found")
+			httpapi.WriteNotFound(w, "config revision")
+			return
+		}
+		if h.logger != nil {
+			h.logger.Error("pending config revision fetch failed", "error", err)
+		}
+		h.recordNode(r, audit.ActionNodeConfigRevisionFetch, nodeID, audit.OutcomeFailure, "storage_error")
+		httpapi.WriteStorageError(w)
+		return
+	}
+
+	h.recordNode(r, audit.ActionNodeConfigRevisionFetch, nodeID, audit.OutcomeSuccess, "")
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: configRevisionResponse(revision)})
 }
 
 func bearerToken(header string) (string, bool) {

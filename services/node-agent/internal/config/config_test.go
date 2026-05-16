@@ -29,6 +29,7 @@ func TestLoadEnv(t *testing.T) {
 	t.Setenv("LENKER_AGENT_HTTP_ADDR", ":9999")
 	t.Setenv("LENKER_AGENT_NODE_ID", "node-1")
 	t.Setenv("LENKER_AGENT_BOOTSTRAP_TOKEN", "token")
+	t.Setenv("LENKER_AGENT_NODE_TOKEN", "node-token")
 	t.Setenv("LENKER_AGENT_PANEL_URL", "https://panel.example.com/")
 	t.Setenv("LENKER_AGENT_STATE_DIR", "/tmp/lenker")
 	t.Setenv("LENKER_AGENT_LOG_LEVEL", "debug")
@@ -41,6 +42,9 @@ func TestLoadEnv(t *testing.T) {
 	}
 	if cfg.HTTPAddr != ":9999" || cfg.NodeID != "node-1" || cfg.BootstrapToken != "token" {
 		t.Fatalf("unexpected config: %#v", cfg)
+	}
+	if cfg.NodeToken != "node-token" {
+		t.Fatalf("unexpected node token")
 	}
 	if cfg.PanelURL != "https://panel.example.com" {
 		t.Fatalf("expected panel url trim, got %q", cfg.PanelURL)

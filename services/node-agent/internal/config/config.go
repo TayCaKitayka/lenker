@@ -12,6 +12,7 @@ type Config struct {
 	HTTPAddr          string
 	NodeID            string
 	BootstrapToken    string
+	NodeToken         string
 	PanelURL          string
 	StateDir          string
 	LogLevel          string
@@ -34,6 +35,7 @@ func Load() (Config, error) {
 		HTTPAddr:          stringFromEnv("LENKER_AGENT_HTTP_ADDR", ":8090"),
 		NodeID:            strings.TrimSpace(os.Getenv("LENKER_AGENT_NODE_ID")),
 		BootstrapToken:    strings.TrimSpace(os.Getenv("LENKER_AGENT_BOOTSTRAP_TOKEN")),
+		NodeToken:         strings.TrimSpace(os.Getenv("LENKER_AGENT_NODE_TOKEN")),
 		PanelURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("LENKER_AGENT_PANEL_URL")), "/"),
 		StateDir:          stringFromEnv("LENKER_AGENT_STATE_DIR", ".lenker-node-agent"),
 		LogLevel:          stringFromEnv("LENKER_AGENT_LOG_LEVEL", "info"),

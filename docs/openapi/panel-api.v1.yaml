@@ -500,6 +500,30 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/nodes/{id}/config-revisions/pending:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Nodes]
+      summary: Fetch latest pending config revision metadata for a node
+      description: Node-agent endpoint. Requires the node Bearer token and returns only the latest pending signed dummy bundle metadata for the node in the path. It does not apply config or control Xray.
+      responses:
+        "200":
+          description: Latest pending config revision metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRevisionEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Node is unknown, token does not match, node is disabled, or no pending revision exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/nodes/{id}/config-revisions/{revisionId}:
     parameters:
       - $ref: "#/components/parameters/ID"

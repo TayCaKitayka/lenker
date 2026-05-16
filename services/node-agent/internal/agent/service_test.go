@@ -1,11 +1,14 @@
 package agent
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -141,6 +144,133 @@ func TestValidateAndStoreConfigRevisionRejectsInvalidSignature(t *testing.T) {
 	}
 }
 
+func TestFetchPendingConfigRevisionBuildsBearerRequest(t *testing.T) {
+	expected := signedTestConfigRevision(t, "node-1", 3, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes/node-1/config-revisions/pending" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer node-token" {
+			t.Fatalf("unexpected authorization header")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": expected})
+	}))
+	defer server.Close()
+
+	client := PanelClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	revision, ok, err := client.FetchPendingConfigRevision(context.Background(), "node-1", "node-token")
+	if err != nil {
+		t.Fatalf("expected revision: %v", err)
+	}
+	if !ok || revision.RevisionNumber != expected.RevisionNumber {
+		t.Fatalf("unexpected revision: ok=%v revision=%#v", ok, revision)
+	}
+}
+
+func TestFetchPendingConfigRevisionNoPending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := PanelClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	_, ok, err := client.FetchPendingConfigRevision(context.Background(), "node-1", "node-token")
+	if err != nil {
+		t.Fatalf("expected no-op, got %v", err)
+	}
+	if ok {
+		t.Fatalf("expected no pending revision")
+	}
+}
+
+func TestFetchPendingConfigRevisionUnauthorized(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := PanelClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	_, _, err := client.FetchPendingConfigRevision(context.Background(), "node-1", "bad-token")
+	if !errors.Is(err, ErrPendingRevisionAuth) {
+		t.Fatalf("expected auth error, got %v", err)
+	}
+}
+
+func TestFetchPendingConfigRevisionMalformedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":`))
+	}))
+	defer server.Close()
+
+	client := PanelClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	_, _, err := client.FetchPendingConfigRevision(context.Background(), "node-1", "node-token")
+	if !errors.Is(err, ErrUnexpectedPanelResponse) {
+		t.Fatalf("expected malformed response error, got %v", err)
+	}
+}
+
+func TestFetchAndApplyPendingConfigRevision(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+
+	applied, err := service.FetchAndApplyPendingConfigRevision(context.Background(), client)
+	if err != nil {
+		t.Fatalf("expected apply: %v", err)
+	}
+	if !applied {
+		t.Fatalf("expected pending revision to be applied")
+	}
+	if client.nodeID != "node-1" || client.nodeToken != "node-token" {
+		t.Fatalf("unexpected fetch input: %#v", client)
+	}
+	status := service.Status()
+	if status.ActiveRevision != 4 || status.LastAppliedRevision != 4 || status.LastRollbackRevision != 3 {
+		t.Fatalf("expected applied revision in status: %#v", status)
+	}
+	payload, err := service.BuildHeartbeatPayload(time.Now())
+	if err != nil {
+		t.Fatalf("expected heartbeat: %v", err)
+	}
+	if payload.ActiveRevision != 4 {
+		t.Fatalf("expected heartbeat active revision 4, got %d", payload.ActiveRevision)
+	}
+}
+
+func TestFetchAndApplyPendingConfigRevisionNoPending(t *testing.T) {
+	client := &fakePendingConfigRevisionClient{ok: false}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+
+	applied, err := service.FetchAndApplyPendingConfigRevision(context.Background(), client)
+	if err != nil {
+		t.Fatalf("expected no-op: %v", err)
+	}
+	if applied {
+		t.Fatalf("expected no pending revision")
+	}
+}
+
+func TestFetchAndApplyPendingConfigRevisionRejectsTamperedRevision(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	revision.Bundle["protocol"] = "tampered"
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	service := NewService(Identity{NodeID: "node-1", NodeToken: "node-token"})
+
+	applied, err := service.FetchAndApplyPendingConfigRevision(context.Background(), client)
+	if !errors.Is(err, ErrInvalidConfigBundleHash) {
+		t.Fatalf("expected invalid bundle hash, got %v", err)
+	}
+	if applied {
+		t.Fatalf("tampered revision must not be applied")
+	}
+	if _, ok := service.ConfigRevision(4); ok {
+		t.Fatalf("tampered revision must not be stored")
+	}
+}
+
 func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, rollbackTarget int) ConfigRevision {
 	t.Helper()
 	bundle := map[string]any{
@@ -173,4 +303,18 @@ func signedTestConfigRevision(t *testing.T, nodeID string, revisionNumber int, r
 	}
 	revision.Signature = hex.EncodeToString(mac.Sum(nil))
 	return revision
+}
+
+type fakePendingConfigRevisionClient struct {
+	revision  ConfigRevision
+	ok        bool
+	err       error
+	nodeID    string
+	nodeToken string
+}
+
+func (c *fakePendingConfigRevisionClient) FetchPendingConfigRevision(ctx context.Context, nodeID string, nodeToken string) (ConfigRevision, bool, error) {
+	c.nodeID = nodeID
+	c.nodeToken = nodeToken
+	return c.revision, c.ok, c.err
 }

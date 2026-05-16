@@ -31,6 +31,7 @@ Configuration:
 - `LENKER_AGENT_HTTP_ADDR`
 - `LENKER_AGENT_NODE_ID`
 - `LENKER_AGENT_BOOTSTRAP_TOKEN`
+- `LENKER_AGENT_NODE_TOKEN`
 - `LENKER_AGENT_PANEL_URL`
 - `LENKER_AGENT_STATE_DIR`
 - `LENKER_AGENT_LOG_LEVEL`
@@ -60,6 +61,7 @@ Panel contract currently implemented:
 - `POST /api/v1/nodes/bootstrap-token`
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
+- `GET /api/v1/nodes/{id}/config-revisions/pending`
 
 Registration payload:
 
@@ -94,7 +96,9 @@ panel until an admin enables them again.
 
 Conservative note:
 
-`LENKER_AGENT_TLS_ENABLED` is a foundation flag only. Full mTLS bootstrap, certificate rotation, network retry policy, and signed config transport are intentionally not implemented in this step.
+`LENKER_AGENT_TLS_ENABLED` is a foundation flag only. Full mTLS bootstrap,
+certificate rotation, and production network retry policy are intentionally not
+implemented in this step.
 
 Stage C note:
 
@@ -102,6 +106,16 @@ The agent validates and stores signed config bundle metadata only. It verifies
 the dummy bundle hash and deterministic development signature, keeps metadata in
 memory, and tracks active/rollback revision numbers. It does not write Xray
 config files, apply configs, restart processes, or execute rollback.
+
+Config delivery metadata foundation:
+
+The agent has a small panel client for fetching the latest pending signed
+revision metadata with `Authorization: Bearer <node_token>`. A fetch/apply
+metadata service method treats `404 not_found` as no-op, rejects unauthorized or
+malformed responses, validates the bundle hash and deterministic dev signature,
+stores metadata in memory, and updates the active/applied revision in status and
+heartbeat payloads. This apply step is metadata-only and does not touch the
+filesystem, Xray config files, OS processes, or rollback execution.
 
 Not included here yet:
 

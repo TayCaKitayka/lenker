@@ -78,6 +78,7 @@ Implemented foundation routes:
 - `POST /api/v1/nodes/{id}/enable`
 - `POST /api/v1/nodes/{id}/config-revisions`
 - `GET /api/v1/nodes/{id}/config-revisions`
+- `GET /api/v1/nodes/{id}/config-revisions/pending`
 - `GET /api/v1/nodes/{id}/config-revisions/{revisionId}`
 - `POST /api/v1/nodes/register`
 - `POST /api/v1/nodes/{id}/heartbeat`
@@ -102,6 +103,7 @@ Node-agent contract routes:
 
 - `POST /api/v1/nodes/register` accepts a one-time bootstrap token and returns a node token
 - `POST /api/v1/nodes/{id}/heartbeat` accepts a node heartbeat with `Authorization: Bearer <node_token>`
+- `GET /api/v1/nodes/{id}/config-revisions/pending` accepts the same node token and returns latest pending signed revision metadata for that node
 
 Use the token returned by admin login:
 
@@ -357,6 +359,18 @@ curl -s http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/<revision_
 
 Revision creation is rejected for disabled nodes and for nodes in `draining` or
 `drained` drain state.
+
+Node-agent fetches the latest pending revision metadata through the node-facing
+endpoint:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/<node_id>/config-revisions/pending \
+  -H "Authorization: Bearer <node_token>"
+```
+
+The endpoint returns `not_found` when there is no pending revision, the token
+does not match the node, or the node is disabled. It does not apply config,
+generate real Xray JSON, restart processes, or execute rollback.
 
 Manual smoke checklist:
 

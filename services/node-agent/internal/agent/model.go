@@ -14,6 +14,7 @@ const (
 type Identity struct {
 	NodeID         string `json:"node_id,omitempty"`
 	BootstrapToken string `json:"-"`
+	NodeToken      string `json:"-"`
 	PanelURL       string `json:"panel_url,omitempty"`
 }
 

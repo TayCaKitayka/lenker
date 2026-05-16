@@ -44,6 +44,7 @@ const (
 	ActionNodeDisable              = "node.disable"
 	ActionNodeEnable               = "node.enable"
 	ActionNodeConfigRevisionCreate = "node.config_revision.create"
+	ActionNodeConfigRevisionFetch  = "node.config_revision.fetch"
 
 	OutcomeSuccess = "success"
 	OutcomeFailure = "failure"

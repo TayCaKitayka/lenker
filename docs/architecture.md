@@ -158,6 +158,13 @@ skeleton work. Stage C stores signed config bundle metadata and revision
 history only; it does not generate real Xray config, apply config, restart
 processes, or execute rollback.
 
+The delivery foundation adds a node-facing endpoint for fetching the latest
+pending signed revision metadata with the node Bearer token. The node-agent can
+fetch, verify hash/signature, store metadata in memory, and send the applied
+revision number in heartbeat payloads. This remains a metadata-only path: no
+Xray JSON generation, file writes, process control, or rollback executor are
+implemented by this layer.
+
 ### Boundary 3: User App to Panel
 
 - protected by standard HTTPS
