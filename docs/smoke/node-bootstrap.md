@@ -429,6 +429,12 @@ For the scripted subscription access handoff path, run:
 make docker-subscription-access-smoke
 ```
 
+For the same scripted path with a name focused on the invite claim demo, run:
+
+```sh
+make docker-handoff-smoke
+```
+
 The helper starts the same local stack, bootstraps admin auth, creates a user,
 plan, active subscription, and active node in a unique smoke region, creates a
 subscription-aware config revision, waits for node-agent polling apply/report,
@@ -440,7 +446,12 @@ then exercises the provider handoff flow:
 3. the token is treated as the out-of-band handoff artifact;
 4. consumer reads `GET /api/v1/client/subscription-access` with
    `Authorization: Bearer <subscription_access_token>`;
-5. provider rotates and revokes the token to prove old/current tokens stop
+5. provider issues a one-time `handoff_token`;
+6. consumer claims it with `POST /api/v1/client/handoff/claim`;
+7. the claim returns a normal `access_token` plus redacted access payload;
+8. consumer reads `GET /api/v1/client/subscription-access` with the claimed
+   access token;
+9. provider rotates and revokes the token to prove old/current tokens stop
    working.
 
 It verifies:
@@ -450,6 +461,16 @@ It verifies:
 - initial token lifecycle status is `never_issued`;
 - the issued access token can read the redacted client access payload;
 - status becomes `active` with generation `1` after issue;
+- initial handoff invite lifecycle status is `never_issued`;
+- the issued handoff token has the `lnkhi_` prefix and is shown only inside the
+  helper for the scripted claim call;
+- `POST /api/v1/client/handoff/claim` succeeds once, marks invite status
+  `claimed`, returns a normal `lnksa_` access token, and returns the same
+  redacted access payload;
+- repeated claim with the same handoff token returns `401`;
+- the claimed access token can read the same redacted client access payload;
+- the pre-claim access token is rejected after claim because claim creates the
+  current normal access token;
 - `POST /api/v1/subscriptions/{id}/access-token/rotate` invalidates the old
   token and the rotated token can read the same redacted payload;
 - status remains `active` and generation advances after rotate;
@@ -466,9 +487,10 @@ It verifies:
 
 On success, the helper prints a short provider-facing handoff summary with the
 subscription id, selected node, endpoint host/port, protocol path, lifecycle
-transition result, client-read result, rotate/revoke checks, and redaction
-status. The summary intentionally does not print the plaintext access token; the
-token remains visible only in the issue/rotate API response inside the helper.
+transition result, handoff claim result, repeated-claim rejection,
+client-read result, rotate/revoke checks, and redaction status. The summary
+intentionally does not print the plaintext handoff token or access token; tokens
+remain visible only inside the helper for scripted API calls.
 
 ### Provider Handoff Operator Runbook
 
@@ -533,9 +555,10 @@ Pre-release operator demo checklist:
 - rotate the token and confirm the old token returns `401`;
 - read again with the rotated token and confirm the payload still matches;
 - revoke the token and confirm the rotated token now returns `401`;
-- run or review `make docker-subscription-access-smoke` output and confirm the
+- run or review `make docker-handoff-smoke` output and confirm the
   summary shows sane subscription/node/endpoint values, `client_read: ok`,
-  rotate/revoke checks passed, and `plaintext_token_printed: false`.
+  `handoff_claim: ok`, `repeated_claim_rejected: true`, rotate/revoke checks
+  passed, and `plaintext_token_printed: false`.
 
 Rotation path:
 

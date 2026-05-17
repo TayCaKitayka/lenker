@@ -58,6 +58,36 @@ assert_token_status() {
   '
 }
 
+assert_handoff_status() {
+  payload="$1"
+  expected_status="$2"
+  expected_issued="$3"
+  expected_generation="$4"
+  STATUS_PAYLOAD="$payload" EXPECTED_STATUS="$expected_status" EXPECTED_ISSUED="$expected_issued" EXPECTED_GENERATION="$expected_generation" ruby -rjson -e '
+    data = JSON.parse(ENV.fetch("STATUS_PAYLOAD")).fetch("data")
+    expected_status = ENV.fetch("EXPECTED_STATUS")
+    expected_issued = ENV.fetch("EXPECTED_ISSUED") == "true"
+    expected_generation = ENV.fetch("EXPECTED_GENERATION").to_i
+    abort("handoff status mismatch: #{data.inspect}") unless data["status"] == expected_status
+    abort("handoff issued mismatch: #{data.inspect}") unless data["issued"] == expected_issued
+    abort("handoff generation mismatch: #{data.inspect}") unless data["generation"].to_i == expected_generation
+    abort("handoff status leaked plaintext: #{data.inspect}") if data.key?("handoff_token")
+    if expected_status == "never_issued"
+      abort("never_issued should not have issued_at: #{data.inspect}") if data.key?("issued_at")
+      abort("never_issued should not have expires_at: #{data.inspect}") if data.key?("expires_at")
+    end
+    if expected_status == "active"
+      abort("active handoff missing issued_at: #{data.inspect}") unless data["issued_at"].to_s != ""
+      abort("active handoff missing expires_at: #{data.inspect}") unless data["expires_at"].to_s != ""
+      abort("active handoff should not have claimed_at: #{data.inspect}") if data.key?("claimed_at")
+      abort("active handoff should not have revoked_at: #{data.inspect}") if data.key?("revoked_at")
+    end
+    if expected_status == "claimed"
+      abort("claimed handoff missing claimed_at: #{data.inspect}") unless data["claimed_at"].to_s != ""
+    end
+  '
+}
+
 wait_for_url() {
   url="$1"
   label="$2"
@@ -195,17 +225,64 @@ log "reading client subscription access"
 client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $access_token")"
 
+log "checking initial handoff invite status"
+initial_handoff_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/handoff-invite" \
+  -H "Authorization: Bearer $admin_token")"
+assert_handoff_status "$initial_handoff_status_json" "never_issued" "false" "0"
+
+log "issuing client handoff invite"
+handoff_invite_json="$(curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$subscription_id/handoff-invite" \
+  -H "Authorization: Bearer $admin_token")"
+handoff_token="$(printf '%s' "$handoff_invite_json" | json_get data.handoff_token)"
+case "$handoff_token" in
+  lnkhi_*) ;;
+  *) fail "handoff token has unexpected prefix" ;;
+esac
+issued_handoff_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/handoff-invite" \
+  -H "Authorization: Bearer $admin_token")"
+assert_handoff_status "$issued_handoff_status_json" "active" "true" "1"
+
+log "claiming client handoff invite"
+claim_json="$(curl -fsS -X POST "$PANEL_URL/api/v1/client/handoff/claim" \
+  -H 'Content-Type: application/json' \
+  -d "{\"handoff_token\":\"$handoff_token\"}")"
+claimed_access_token="$(printf '%s' "$claim_json" | json_get data.access_token)"
+case "$claimed_access_token" in
+  lnksa_*) ;;
+  *) fail "claimed access token has unexpected prefix" ;;
+esac
+claimed_handoff_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/handoff-invite" \
+  -H "Authorization: Bearer $admin_token")"
+assert_handoff_status "$claimed_handoff_status_json" "claimed" "true" "1"
+
+repeated_claim_status="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PANEL_URL/api/v1/client/handoff/claim" \
+  -H 'Content-Type: application/json' \
+  -d "{\"handoff_token\":\"$handoff_token\"}")"
+[ "$repeated_claim_status" = "401" ] || fail "repeated handoff claim returned $repeated_claim_status, expected 401"
+
+log "reading client access from claimed token"
+claimed_client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $claimed_access_token")"
+
+claimed_token_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token")"
+assert_token_status "$claimed_token_status_json" "active" "true" "2"
+
+superseded_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $access_token")"
+[ "$superseded_token_status" = "401" ] || fail "pre-claim access token returned $superseded_token_status, expected 401 after handoff claim"
+
 log "rotating subscription access token"
 rotated_token_json="$(curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token/rotate" \
   -H "Authorization: Bearer $admin_token")"
 rotated_token="$(printf '%s' "$rotated_token_json" | json_get data.access_token)"
 rotated_token_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
   -H "Authorization: Bearer $admin_token")"
-assert_token_status "$rotated_token_status_json" "active" "true" "2"
+assert_token_status "$rotated_token_status_json" "active" "true" "3"
 
 old_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
-  -H "Authorization: Bearer $access_token")"
-[ "$old_token_status" = "401" ] || fail "rotated old token returned $old_token_status, expected 401"
+  -H "Authorization: Bearer $claimed_access_token")"
+[ "$old_token_status" = "401" ] || fail "rotated claimed token returned $old_token_status, expected 401"
 
 rotated_client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $rotated_token")"
@@ -213,7 +290,7 @@ rotated_client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-a
 log "revoking rotated subscription access token"
 revoked_token_status_json="$(curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
   -H "Authorization: Bearer $admin_token")"
-assert_token_status "$revoked_token_status_json" "revoked" "true" "2"
+assert_token_status "$revoked_token_status_json" "revoked" "true" "3"
 
 revoked_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $rotated_token")"
@@ -222,23 +299,29 @@ revoked_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v
 log "checking repeated revoke remains safe"
 repeated_revoke_status_json="$(curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
   -H "Authorization: Bearer $admin_token")"
-assert_token_status "$repeated_revoke_status_json" "revoked" "true" "2"
+assert_token_status "$repeated_revoke_status_json" "revoked" "true" "3"
 
 active_config_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/config.json)"
 active_metadata_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/metadata.json)"
 
-ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" ROTATED_CLIENT_ACCESS="$rotated_client_access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" INITIAL_STATUS="$initial_token_status_json" ISSUED_STATUS="$issued_token_status_json" ROTATED_STATUS="$rotated_token_status_json" REVOKED_STATUS="$revoked_token_status_json" REPEATED_REVOKE_STATUS="$repeated_revoke_status_json" ruby -rjson -ruri -e '
+ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" CLAIM="$claim_json" CLAIMED_CLIENT_ACCESS="$claimed_client_access_json" ROTATED_CLIENT_ACCESS="$rotated_client_access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" INITIAL_STATUS="$initial_token_status_json" ISSUED_STATUS="$issued_token_status_json" CLAIMED_TOKEN_STATUS="$claimed_token_status_json" ROTATED_STATUS="$rotated_token_status_json" REVOKED_STATUS="$revoked_token_status_json" REPEATED_REVOKE_STATUS="$repeated_revoke_status_json" INITIAL_HANDOFF_STATUS="$initial_handoff_status_json" ISSUED_HANDOFF_STATUS="$issued_handoff_status_json" CLAIMED_HANDOFF_STATUS="$claimed_handoff_status_json" ruby -rjson -ruri -e '
   access = JSON.parse(ENV.fetch("ACCESS")).fetch("data")
   client_access = JSON.parse(ENV.fetch("CLIENT_ACCESS")).fetch("data")
+  claim = JSON.parse(ENV.fetch("CLAIM")).fetch("data")
+  claimed_client_access = JSON.parse(ENV.fetch("CLAIMED_CLIENT_ACCESS")).fetch("data")
   rotated_client_access = JSON.parse(ENV.fetch("ROTATED_CLIENT_ACCESS")).fetch("data")
   revision = JSON.parse(ENV.fetch("REVISION")).fetch("data")
   config = JSON.parse(ENV.fetch("CONFIG"))
   metadata = JSON.parse(ENV.fetch("METADATA"))
   initial_status = JSON.parse(ENV.fetch("INITIAL_STATUS")).fetch("data")
   issued_status = JSON.parse(ENV.fetch("ISSUED_STATUS")).fetch("data")
+  claimed_token_status = JSON.parse(ENV.fetch("CLAIMED_TOKEN_STATUS")).fetch("data")
   rotated_status = JSON.parse(ENV.fetch("ROTATED_STATUS")).fetch("data")
   revoked_status = JSON.parse(ENV.fetch("REVOKED_STATUS")).fetch("data")
   repeated_revoke_status = JSON.parse(ENV.fetch("REPEATED_REVOKE_STATUS")).fetch("data")
+  initial_handoff_status = JSON.parse(ENV.fetch("INITIAL_HANDOFF_STATUS")).fetch("data")
+  issued_handoff_status = JSON.parse(ENV.fetch("ISSUED_HANDOFF_STATUS")).fetch("data")
+  claimed_handoff_status = JSON.parse(ENV.fetch("CLAIMED_HANDOFF_STATUS")).fetch("data")
   node_id = ENV.fetch("NODE_ID")
   subscription_id = ENV.fetch("SUBSCRIPTION_ID")
 
@@ -255,6 +338,12 @@ ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" ROTATED_CLIENT_ACCESS=
   abort("client access node mismatch") unless client_access["node"] == access["node"]
   abort("client access client id mismatch") unless client_access.dig("client", "id") == access.dig("client", "id")
   abort("client access flow mismatch") unless client_access.dig("client", "flow") == access.dig("client", "flow")
+  abort("claim kind mismatch") unless claim["claim_kind"] == "subscription_handoff_claim.v1alpha1"
+  abort("claim subscription mismatch") unless claim["subscription_id"] == subscription_id
+  abort("claim leaked handoff token") if claim.key?("handoff_token")
+  abort("claim missing access token") unless claim["access_token"].to_s.start_with?("lnksa_")
+  abort("claim access mismatch") unless claim["access"] == client_access
+  abort("claimed client access mismatch") unless claimed_client_access == client_access
   abort("rotated client access mismatch") unless rotated_client_access == client_access
 
   entries = revision.dig("bundle", "access_entries") || []
@@ -287,24 +376,32 @@ ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" ROTATED_CLIENT_ACCESS=
 
   abort("initial token status mismatch") unless initial_status["status"] == "never_issued"
   abort("issued token status mismatch") unless issued_status["status"] == "active" && issued_status["generation"].to_i == 1
-  abort("rotated token status mismatch") unless rotated_status["status"] == "active" && rotated_status["generation"].to_i == 2
-  abort("revoked token status mismatch") unless revoked_status["status"] == "revoked" && revoked_status["generation"].to_i == 2
-  abort("repeated revoke status mismatch") unless repeated_revoke_status["status"] == "revoked" && repeated_revoke_status["generation"].to_i == 2
+  abort("claimed token status mismatch") unless claimed_token_status["status"] == "active" && claimed_token_status["generation"].to_i == 2
+  abort("rotated token status mismatch") unless rotated_status["status"] == "active" && rotated_status["generation"].to_i == 3
+  abort("revoked token status mismatch") unless revoked_status["status"] == "revoked" && revoked_status["generation"].to_i == 3
+  abort("repeated revoke status mismatch") unless repeated_revoke_status["status"] == "revoked" && repeated_revoke_status["generation"].to_i == 3
+  abort("initial handoff status mismatch") unless initial_handoff_status["status"] == "never_issued"
+  abort("issued handoff status mismatch") unless issued_handoff_status["status"] == "active" && issued_handoff_status["generation"].to_i == 1
+  abort("claimed handoff status mismatch") unless claimed_handoff_status["status"] == "claimed" && claimed_handoff_status["generation"].to_i == 1
 
   puts ""
-  puts "Subscription handoff smoke summary"
+  puts "Subscription handoff bootstrap smoke summary"
   puts "  subscription_id: #{subscription_id}"
   puts "  selected_node_id: #{node_id}"
   puts "  selected_node_hostname: #{access.dig("node", "hostname")}"
   puts "  endpoint: #{access.dig("endpoint", "address")}:#{access.dig("endpoint", "port")}"
   puts "  protocol_path: #{access["protocol_path"]}"
   puts "  applied_revision: #{revision["revision_number"]}"
-  puts "  lifecycle: #{initial_status["status"]} -> #{issued_status["status"]} -> #{rotated_status["status"]}(generation #{rotated_status["generation"]}) -> #{revoked_status["status"]}"
+  puts "  lifecycle: #{initial_status["status"]} -> #{issued_status["status"]}(generation #{issued_status["generation"]}) -> claimed_token(generation #{claimed_token_status["generation"]}) -> #{rotated_status["status"]}(generation #{rotated_status["generation"]}) -> #{revoked_status["status"]}"
+  puts "  handoff_lifecycle: #{initial_handoff_status["status"]} -> #{issued_handoff_status["status"]} -> #{claimed_handoff_status["status"]}"
+  puts "  handoff_claim: ok"
+  puts "  repeated_claim_rejected: true"
   puts "  client_read: ok"
-  puts "  rotate_check: old token rejected, rotated token accepted"
+  puts "  access_read_after_claim: ok"
+  puts "  rotate_check: claimed token rejected, rotated token accepted"
   puts "  revoke_check: revoked token rejected, repeated revoke safe"
   puts "  client_payload_redacted: #{!client_access.key?("user_id") && !client_access.key?("plan_id")}"
   puts "  plaintext_token_printed: false"
 '
 
-log "subscription access handoff smoke passed"
+log "subscription handoff bootstrap smoke passed"

@@ -180,10 +180,11 @@ curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $SUBSCRIPTION_ACCESS_TOKEN"
 ```
 
-The local `make docker-subscription-access-smoke` helper exercises the same
-handoff path and ends with a compact operational summary. That summary confirms
-the selected subscription/node/endpoint, lifecycle transitions, client read,
-rotate/revoke checks, and redaction status without printing the plaintext token.
+The local `make docker-subscription-access-smoke` and
+`make docker-handoff-smoke` helpers exercise the same handoff path and end with
+a compact operational summary. That summary confirms the selected
+subscription/node/endpoint, invite claim, lifecycle transitions, client read,
+rotate/revoke checks, and redaction status without printing plaintext tokens.
 For operator steps around issue, out-of-band handoff, verification, rotation,
 and revocation, see the provider handoff runbook in
 `docs/smoke/node-bootstrap.md`.

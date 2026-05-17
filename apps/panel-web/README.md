@@ -20,6 +20,7 @@ Current implemented foundation:
 - subscriptions page can issue or revoke a short-lived one-time client handoff invite; plaintext handoff invite tokens are only shown from issue responses and are not recoverable from later status reads;
 - provider handoff remains out-of-band in this UI layer: the panel shows lifecycle status and one-time token responses but does not implement a client portal, invite link, or deeplink delivery flow;
 - operator handoff steps for issue, external delivery, verification, rotation, and revocation are documented in `docs/smoke/node-bootstrap.md`;
+- `make docker-handoff-smoke` verifies provider invite issue, consumer claim, access read, repeated claim rejection, and safe summary output;
 - nodes management page with list, detail, bootstrap token creation, drain, undrain, disable, enable, read-only config revision metadata, and rollback revision creation flows.
 
 Run from the repository root:
