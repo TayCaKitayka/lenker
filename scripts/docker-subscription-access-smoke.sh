@@ -141,11 +141,28 @@ done
 log "fetching subscription access export"
 access_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/access" \
   -H "Authorization: Bearer $admin_token")"
+
+log "issuing subscription access token"
+access_token_json="$(curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token")"
+access_token="$(printf '%s' "$access_token_json" | json_get data.access_token)"
+
+log "checking missing and invalid client access tokens"
+missing_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access")"
+[ "$missing_status" = "401" ] || fail "missing client access token returned $missing_status, expected 401"
+invalid_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer invalid-subscription-access-token")"
+[ "$invalid_status" = "401" ] || fail "invalid client access token returned $invalid_status, expected 401"
+
+log "reading client subscription access"
+client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $access_token")"
 active_config_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/config.json)"
 active_metadata_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/metadata.json)"
 
-ACCESS="$access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" ruby -rjson -ruri -e '
+ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" ruby -rjson -ruri -e '
   access = JSON.parse(ENV.fetch("ACCESS")).fetch("data")
+  client_access = JSON.parse(ENV.fetch("CLIENT_ACCESS")).fetch("data")
   revision = JSON.parse(ENV.fetch("REVISION")).fetch("data")
   config = JSON.parse(ENV.fetch("CONFIG"))
   metadata = JSON.parse(ENV.fetch("METADATA"))
@@ -157,6 +174,14 @@ ACCESS="$access_json" REVISION="$revision_detail_json" CONFIG="$active_config_js
   abort("access client id mismatch") unless access.dig("client", "id") == subscription_id
   abort("access endpoint address mismatch") unless access.dig("endpoint", "address") == access.dig("node", "hostname")
   abort("active metadata revision mismatch") unless metadata["revision_number"].to_i == revision["revision_number"].to_i
+  abort("client access subscription mismatch") unless client_access["subscription_id"] == subscription_id
+  abort("client access leaked user id") if client_access.key?("user_id") || client_access.key?("user_label")
+  abort("client access leaked plan id") if client_access.key?("plan_id") || client_access.dig("client", "plan_id")
+  abort("client access uri mismatch") unless client_access["uri"] == access["uri"]
+  abort("client access endpoint mismatch") unless client_access["endpoint"] == access["endpoint"]
+  abort("client access node mismatch") unless client_access["node"] == access["node"]
+  abort("client access client id mismatch") unless client_access.dig("client", "id") == access.dig("client", "id")
+  abort("client access flow mismatch") unless client_access.dig("client", "flow") == access.dig("client", "flow")
 
   entries = revision.dig("bundle", "access_entries") || []
   entry = entries.find { |item| item["subscription_id"] == subscription_id }
@@ -193,6 +218,7 @@ ACCESS="$access_json" REVISION="$revision_detail_json" CONFIG="$active_config_js
     access_protocol: access["protocol"],
     access_address: access.dig("endpoint", "address"),
     access_client_id: access.dig("client", "id"),
+    client_access_redacted: !client_access.key?("user_id") && !client_access.key?("plan_id"),
     active_config_clients: inbound.fetch("settings").fetch("clients").length
   }
   puts JSON.pretty_generate(summary)

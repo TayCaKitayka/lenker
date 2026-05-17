@@ -432,14 +432,21 @@ make docker-subscription-access-smoke
 The helper starts the same local stack, bootstraps admin auth, creates a user,
 plan, active subscription, and active node in a unique smoke region, creates a
 subscription-aware config revision, waits for node-agent polling apply/report,
-then calls `GET /api/v1/subscriptions/{id}/access`. It verifies:
+then calls `GET /api/v1/subscriptions/{id}/access`, issues a subscription
+access token with `POST /api/v1/subscriptions/{id}/access-token`, and reads
+`GET /api/v1/client/subscription-access` with
+`Authorization: Bearer <subscription_access_token>`. It verifies:
 
 - the access endpoint returns `subscription_access.v1alpha1`;
+- missing and invalid client access tokens return `401`;
+- the issued access token can read the redacted client access payload;
 - the selected access node is the same active node whose config was applied;
 - the revision bundle and active `config.json` contain the exported
   subscription/client entry;
 - endpoint network/security/SNI/short id/port match the active config;
-- the deterministic VLESS URI matches the structured endpoint/client fields.
+- the deterministic VLESS URI matches the structured endpoint/client fields;
+- the client access payload matches provider-side endpoint/client data without
+  leaking provider-internal `user_id`, `user_label`, or `plan_id`.
 
 If node-agent is running in the Docker profile, first inspect local agent status:
 
