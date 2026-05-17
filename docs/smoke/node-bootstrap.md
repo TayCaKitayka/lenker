@@ -423,7 +423,7 @@ missing binary. Expected result:
 - runtime readiness moves to `validation_failed`;
 - persisted `runtime_events` include `dry_run_failure`.
 
-For the scripted subscription access export path, run:
+For the scripted subscription access handoff path, run:
 
 ```sh
 make docker-subscription-access-smoke
@@ -432,10 +432,18 @@ make docker-subscription-access-smoke
 The helper starts the same local stack, bootstraps admin auth, creates a user,
 plan, active subscription, and active node in a unique smoke region, creates a
 subscription-aware config revision, waits for node-agent polling apply/report,
-then calls `GET /api/v1/subscriptions/{id}/access`, issues a subscription
-access token with `POST /api/v1/subscriptions/{id}/access-token`, reads
-`GET /api/v1/client/subscription-access` with
-`Authorization: Bearer <subscription_access_token>`. It verifies:
+then exercises the provider handoff flow:
+
+1. provider inspects `GET /api/v1/subscriptions/{id}/access`;
+2. provider issues a one-time visible plaintext token with
+   `POST /api/v1/subscriptions/{id}/access-token`;
+3. the token is treated as the out-of-band handoff artifact;
+4. consumer reads `GET /api/v1/client/subscription-access` with
+   `Authorization: Bearer <subscription_access_token>`;
+5. provider rotates and revokes the token to prove old/current tokens stop
+   working.
+
+It verifies:
 
 - the access endpoint returns `subscription_access.v1alpha1`;
 - missing and invalid client access tokens return `401`;

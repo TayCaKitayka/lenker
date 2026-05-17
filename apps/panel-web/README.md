@@ -16,7 +16,7 @@ Current implemented foundation:
 - plans management page with list, create, update, and archive flows;
 - subscriptions management page with list, create, update, and renew flows;
 - subscriptions page can load a compact read-only access export for the single MVP VLESS Reality path;
-- subscriptions page can show read-only subscription access token lifecycle status (`never_issued`, `active`, `revoked`) and issue, rotate, or revoke the current token; plaintext tokens are only shown from issue/rotate responses;
+- subscriptions page can show read-only subscription access token lifecycle status (`never_issued`, `active`, `revoked`) and issue, rotate, or revoke the current token for provider handoff; plaintext tokens are only shown from issue/rotate responses and are not recoverable from later status reads;
 - nodes management page with list, detail, bootstrap token creation, drain, undrain, disable, enable, read-only config revision metadata, and rollback revision creation flows.
 
 Run from the repository root:
@@ -76,7 +76,7 @@ Planned `MVP v0.1` provider UI scope:
 - plans list/create/update/archive;
 - subscriptions list/create/renew;
 - subscription access export inspection for the current provider-side MVP path;
-- subscription access token issue, rotate, and revoke controls for the current provider-side MVP path;
+- subscription access token issue, rotate, revoke, and out-of-band handoff controls for the current provider-side MVP path;
 - nodes list/detail/drain/undrain/disable/enable;
 - node config revisions list/detail metadata view with applied-revision rollback action;
 - loading, empty, unauthorized, and API error states.

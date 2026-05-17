@@ -224,9 +224,12 @@ returning a new plaintext token once, rotate without an existing token behaves
 as a fresh issue, and revoke is idempotent for never-issued or already-revoked
 subscriptions. Panel-api stores only the token hash and expiry. Consumers can
 call `GET /api/v1/client/subscription-access` with that Bearer token to read a
-redacted access export without an admin session. This does not implement full
-end-user app authentication, device binding, marketplace provider discovery,
-billing, or multi-protocol delivery.
+redacted access export without an admin session. The provider handoff is
+out-of-band for this foundation: the panel shows the plaintext token only from
+issue/rotate responses, later provider reads expose only lifecycle status, and
+consumer calls never use the admin session token. This does not implement full
+end-user app authentication, deeplink delivery, device binding, marketplace
+provider discovery, billing, or multi-protocol delivery.
 
 ### Boundary 4: Secrets and Persistent State
 

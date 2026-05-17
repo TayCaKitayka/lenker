@@ -148,9 +148,23 @@ Subscription access export:
 - `GET /api/v1/client/subscription-access` accepts
   `Authorization: Bearer <subscription_access_token>` and returns a redacted
   access export without admin session auth.
+- Provider handoff is deliberately out-of-band at this stage: the provider
+  copies the plaintext token from the issue/rotate response and gives it to the
+  subscriber through an external channel. Later provider reads show only
+  lifecycle status, never the plaintext token.
 - The token endpoint is a narrow read boundary only; it is not full end-user app
-  authentication, device management, marketplace delivery, billing, or
-  multi-protocol export.
+  authentication, deeplink delivery, device management, marketplace delivery,
+  billing, or multi-protocol export.
+
+Provider handoff example:
+
+```sh
+curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$SUBSCRIPTION_ID/access-token" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $SUBSCRIPTION_ACCESS_TOKEN"
+```
 
 Use the token returned by admin login:
 

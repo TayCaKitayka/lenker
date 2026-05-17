@@ -205,6 +205,82 @@ revoked timestamps plus a generation count. Panel-api stores only SHA-256 token
 hashes; tokens expire with the subscription and are accepted only by the
 consumer-facing access read endpoint.
 
+Provider-facing handoff flow:
+
+1. A provider admin issues or rotates a subscription access token.
+2. Panel-api returns the plaintext `access_token` exactly once in that
+   issue/rotate response.
+3. The provider sends that token to the subscriber out-of-band.
+4. The subscriber or future client uses
+   `Authorization: Bearer <subscription_access_token>` with
+   `GET /api/v1/client/subscription-access`.
+5. The client read response contains the redacted access payload and VLESS URI
+   for the single MVP path.
+6. The provider can later inspect lifecycle status, rotate the token, or revoke
+   it. Status reads never return plaintext token material.
+
+Example provider issue:
+
+```sh
+curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$SUBSCRIPTION_ID/access-token" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Example issue response:
+
+```json
+{
+  "data": {
+    "subscription_id": "sub_123",
+    "access_token": "lnksa_example_plaintext_token",
+    "expires_at": "2026-06-16T12:00:00Z",
+    "created_at": "2026-05-17T12:00:00Z"
+  }
+}
+```
+
+Example consumer read:
+
+```sh
+curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $SUBSCRIPTION_ACCESS_TOKEN"
+```
+
+Example provider status read after handoff:
+
+```sh
+curl -fsS "$PANEL_URL/api/v1/subscriptions/$SUBSCRIPTION_ID/access-token" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Example status response:
+
+```json
+{
+  "data": {
+    "subscription_id": "sub_123",
+    "status": "active",
+    "issued": true,
+    "issued_at": "2026-05-17T12:00:00Z",
+    "generation": 1
+  }
+}
+```
+
+Example rotation and revoke:
+
+```sh
+curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$SUBSCRIPTION_ID/access-token/rotate" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$SUBSCRIPTION_ID/access-token" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+After rotation, the previous token is rejected by the client read endpoint.
+After revoke, the current token is rejected. Neither operation exposes a token
+through the status endpoint.
+
 #### `GET /client/subscription-access`
 
 Return a redacted subscription access export using

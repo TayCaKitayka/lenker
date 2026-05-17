@@ -1315,19 +1315,24 @@ components:
               $ref: "#/components/schemas/SubscriptionAccess"
     SubscriptionAccessToken:
       type: object
+      description: Plaintext provider handoff token returned only by issue or rotate responses.
       required: [subscription_id, access_token, expires_at, created_at]
       properties:
         subscription_id:
           type: string
+          example: "sub_123"
         access_token:
           type: string
           description: Plaintext token returned only by the create-token response.
+          example: "lnksa_example_plaintext_token"
         expires_at:
           type: string
           format: date-time
+          example: "2026-06-16T12:00:00Z"
         created_at:
           type: string
           format: date-time
+          example: "2026-05-17T12:00:00Z"
     SubscriptionAccessTokenEnvelope:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
@@ -1337,25 +1342,32 @@ components:
               $ref: "#/components/schemas/SubscriptionAccessToken"
     SubscriptionAccessTokenStatus:
       type: object
+      description: Provider-side token lifecycle status. It never includes plaintext token material.
       required: [subscription_id, status, issued, generation]
       properties:
         subscription_id:
           type: string
+          example: "sub_123"
         status:
           type: string
           enum: [never_issued, active, revoked]
+          example: active
         issued:
           type: boolean
+          example: true
         issued_at:
           type: string
           format: date-time
           nullable: true
+          example: "2026-05-17T12:00:00Z"
         revoked_at:
           type: string
           format: date-time
           nullable: true
+          example: null
         generation:
           type: integer
+          example: 1
     SubscriptionAccessTokenStatusEnvelope:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
