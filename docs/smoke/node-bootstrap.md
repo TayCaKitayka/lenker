@@ -515,6 +515,23 @@ Expected signals:
   match the active node/config path;
 - provider status reads do not return plaintext token material.
 
+Pre-release operator demo checklist:
+
+- login to panel-web as admin;
+- open Nodes and confirm runtime readiness plus recent runtime events are
+  visible for the demo node;
+- open Subscriptions and confirm the access export block shows the selected
+  node, endpoint, protocol path, and VLESS URI;
+- issue a subscription access token and confirm token status becomes `active`;
+- read `GET /api/v1/client/subscription-access` with that Bearer token and
+  confirm the redacted payload matches the provider access block;
+- rotate the token and confirm the old token returns `401`;
+- read again with the rotated token and confirm the payload still matches;
+- revoke the token and confirm the rotated token now returns `401`;
+- run or review `make docker-subscription-access-smoke` output and confirm the
+  summary shows sane subscription/node/endpoint values, `client_read: ok`,
+  rotate/revoke checks passed, and `plaintext_token_printed: false`.
+
 Rotation path:
 
 1. Rotate with the panel Rotate action or
