@@ -167,8 +167,20 @@ export interface Node extends NodeSummary {
   last_validation_at?: string | null;
   last_applied_revision?: number;
   active_config_path?: string;
+  runtime_events?: RuntimeEvent[] | null;
   last_health_at?: string | null;
   updated_at: string;
+}
+
+export interface RuntimeEvent {
+  type?: string | null;
+  status?: string | null;
+  revision_number?: number | null;
+  message?: string | null;
+  runtime_mode?: string | null;
+  runtime_process_mode?: string | null;
+  runtime_process_state?: string | null;
+  at?: string | null;
 }
 
 export interface CreateNodeBootstrapTokenInput {

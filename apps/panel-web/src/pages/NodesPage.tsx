@@ -27,6 +27,7 @@ import {
   emptyNodeBootstrapForm,
   formatConfigRevisionBundle,
   formatNodeTimestamp,
+  formatRuntimeEventType,
   nodeDrainClass,
   nodeStatusClass,
   validateNodeBootstrapForm,
@@ -598,6 +599,8 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
               <DetailItem label="Last applied revision" value={formatRevisionNumber(selectedNode.last_applied_revision)} />
               <DetailItem label="Active config path" value={selectedNode.active_config_path} mono />
             </dl>
+
+            <RuntimeEventsBlock events={selectedNode.runtime_events ?? []} />
           </section>
         </section>
       ) : null}
@@ -781,6 +784,45 @@ function runtimeValidationStatusClass(status?: string | null): string {
 
 function formatRevisionNumber(value?: number): string {
   return value && value > 0 ? String(value) : "-";
+}
+
+interface RuntimeEventsBlockProps {
+  events: NonNullable<Node["runtime_events"]>;
+}
+
+function RuntimeEventsBlock({ events }: RuntimeEventsBlockProps) {
+  return (
+    <section className="runtime-events-panel" aria-label="Recent node runtime events">
+      <div className="section-heading compact-heading">
+        <div>
+          <p className="eyebrow">Runtime events</p>
+          <h4>Recent events</h4>
+        </div>
+        <span className="pill">{events.length} recent</span>
+      </div>
+
+      {events.length === 0 ? (
+        <p className="state-card compact">No runtime events yet.</p>
+      ) : (
+        <ol className="runtime-events-list">
+          {events.map((event, index) => (
+            <li key={`${event.type || "event"}-${event.at || index}-${index}`}>
+              <div className="runtime-event-main">
+                <span className="runtime-event-title">{formatRuntimeEventType(event.type)}</span>
+                {event.status ? <span className={`status-badge ${runtimeValidationStatusClass(event.status)}`}>{event.status}</span> : null}
+              </div>
+              <div className="runtime-event-meta">
+                <span>{formatNodeTimestamp(event.at)}</span>
+                {event.revision_number && event.revision_number > 0 ? <span>Revision #{event.revision_number}</span> : null}
+                {event.runtime_mode ? <span>{event.runtime_mode}</span> : null}
+              </div>
+              {event.message ? <p className="runtime-event-message mono-cell">{event.message}</p> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
 }
 
 interface RevisionFailureBlockProps {

@@ -8,6 +8,7 @@ import {
   emptyNodeBootstrapForm,
   formatConfigRevisionBundle,
   formatNodeTimestamp,
+  formatRuntimeEventType,
   validateNodeBootstrapForm,
 } from "./nodeForm";
 
@@ -21,6 +22,7 @@ function runTests(): void {
   validatesExpiry();
   buildsTrimmedBootstrapInput();
   formatsTimestampsSafely();
+  formatsRuntimeEventTypes();
   checksLifecycleActions();
   formatsConfigRevisionDisplay();
 }
@@ -52,6 +54,12 @@ function formatsTimestampsSafely(): void {
   assert(formatNodeTimestamp(null) === "-", "expected null timestamp fallback");
   assert(formatNodeTimestamp("not-a-date") === "-", "expected invalid timestamp fallback");
   assert(formatNodeTimestamp("2026-05-16T02:46:28Z") !== "-", "expected formatted timestamp");
+}
+
+function formatsRuntimeEventTypes(): void {
+  assert(formatRuntimeEventType(null) === "Runtime event", "expected empty runtime event fallback");
+  assert(formatRuntimeEventType("dry_run_failure") === "Dry Run Failure", "expected readable dry-run event type");
+  assert(formatRuntimeEventType("process_prepare_start_intent") === "Process Prepare Start Intent", "expected readable process intent event type");
 }
 
 function checksLifecycleActions(): void {

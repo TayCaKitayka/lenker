@@ -621,6 +621,57 @@ select {
   overflow-wrap: anywhere;
 }
 
+.runtime-events-panel {
+  margin-top: 18px;
+}
+
+.runtime-events-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.runtime-events-list li {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e5ebf4;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.runtime-event-main,
+.runtime-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.runtime-event-main {
+  justify-content: space-between;
+}
+
+.runtime-event-title {
+  font-weight: 900;
+}
+
+.runtime-event-meta {
+  margin-top: 6px;
+  color: #65758f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.runtime-event-message {
+  margin: 8px 0 0;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .revision-failure-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -87,6 +87,19 @@ export function formatNodeTimestamp(value?: string | null): string {
   }).format(parsedValue);
 }
 
+export function formatRuntimeEventType(value?: string | null): string {
+  const normalizedValue = value?.trim();
+  if (!normalizedValue) {
+    return "Runtime event";
+  }
+
+  return normalizedValue
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function canDrain(node: NodeLifecycleState): boolean {
   return node.status !== "disabled" && node.drain_state !== "draining";
 }
