@@ -52,6 +52,12 @@ type SubscriptionAccessToken struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+type SubscriptionAccessTokenStatus struct {
+	SubscriptionID string    `json:"subscription_id"`
+	Status         string    `json:"status"`
+	RevokedAt      time.Time `json:"revoked_at"`
+}
+
 type SubscriptionAccessNode struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
@@ -104,6 +110,8 @@ type SubscriptionsRepository interface {
 	FindByID(ctx context.Context, id string) (Subscription, error)
 	Access(ctx context.Context, id string) (SubscriptionAccess, error)
 	CreateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error)
+	RotateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error)
+	RevokeAccessToken(ctx context.Context, id string) (SubscriptionAccessTokenStatus, error)
 	AccessByToken(ctx context.Context, token string) (SubscriptionAccess, error)
 	Update(ctx context.Context, id string, input UpdateSubscriptionInput) (Subscription, error)
 	Renew(ctx context.Context, id string, extendDays int) (Subscription, error)
@@ -397,21 +405,47 @@ func (r *subscriptionsRepository) Access(ctx context.Context, id string) (Subscr
 }
 
 func (r *subscriptionsRepository) CreateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error) {
+	return r.replaceAccessToken(ctx, id)
+}
+
+func (r *subscriptionsRepository) RotateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error) {
+	return r.replaceAccessToken(ctx, id)
+}
+
+func (r *subscriptionsRepository) replaceAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error) {
 	token, err := newSubscriptionAccessToken()
 	if err != nil {
 		return SubscriptionAccessToken{}, err
 	}
 
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SubscriptionAccessToken{}, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := ensureSubscriptionEligibleForAccessToken(ctx, tx, id); err != nil {
+		return SubscriptionAccessToken{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE subscription_access_tokens
+		SET status = 'revoked',
+		    updated_at = now()
+		WHERE subscription_id = $1
+		  AND status = 'active'
+	`, id); err != nil {
+		return SubscriptionAccessToken{}, err
+	}
+
 	var result SubscriptionAccessToken
-	err = r.db.QueryRowContext(ctx, `
-		INSERT INTO subscription_access_tokens (subscription_id, token_hash, expires_at)
-		SELECT s.id, $2, s.expires_at
-		FROM subscriptions s
-		JOIN users u ON u.id = s.user_id
-		WHERE s.id = $1
-		  AND s.status = 'active'
-		  AND u.status = 'active'
-		  AND s.expires_at > now()
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO subscription_access_tokens (subscription_id, token_hash, expires_at, status)
+		SELECT id, $2, expires_at, 'active'
+		FROM subscriptions
+		WHERE id = $1
 		RETURNING subscription_id::text, expires_at, created_at
 	`, id, HashSubscriptionAccessToken(token)).Scan(
 		&result.SubscriptionID,
@@ -419,16 +453,40 @@ func (r *subscriptionsRepository) CreateAccessToken(ctx context.Context, id stri
 		&result.CreatedAt,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			if _, findErr := r.FindByID(ctx, id); errors.Is(findErr, ErrNotFound) {
-				return SubscriptionAccessToken{}, ErrNotFound
-			}
-			return SubscriptionAccessToken{}, ErrSubscriptionAccessUnavailable
-		}
+		return SubscriptionAccessToken{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return SubscriptionAccessToken{}, err
 	}
 	result.Token = token
 	return result, nil
+}
+
+func (r *subscriptionsRepository) RevokeAccessToken(ctx context.Context, id string) (SubscriptionAccessTokenStatus, error) {
+	if _, err := r.FindByID(ctx, id); err != nil {
+		return SubscriptionAccessTokenStatus{}, err
+	}
+
+	var revokedAt time.Time
+	err := r.db.QueryRowContext(ctx, `
+		WITH revoked AS (
+			UPDATE subscription_access_tokens
+			SET status = 'revoked',
+			    updated_at = now()
+			WHERE subscription_id = $1
+			  AND status = 'active'
+			RETURNING updated_at
+		)
+		SELECT COALESCE((SELECT MAX(updated_at) FROM revoked), now())
+	`, id).Scan(&revokedAt)
+	if err != nil {
+		return SubscriptionAccessTokenStatus{}, err
+	}
+	return SubscriptionAccessTokenStatus{
+		SubscriptionID: id,
+		Status:         "revoked",
+		RevokedAt:      revokedAt,
+	}, nil
 }
 
 func (r *subscriptionsRepository) AccessByToken(ctx context.Context, token string) (SubscriptionAccess, error) {
@@ -454,6 +512,39 @@ func (r *subscriptionsRepository) AccessByToken(ctx context.Context, token strin
 		return SubscriptionAccess{}, err
 	}
 	return r.Access(ctx, subscriptionID)
+}
+
+type subscriptionQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func ensureSubscriptionEligibleForAccessToken(ctx context.Context, queryer subscriptionQueryer, id string) error {
+	var subscriptionID string
+	err := queryer.QueryRowContext(ctx, `
+		SELECT s.id::text
+		FROM subscriptions s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.id = $1
+		  AND s.status = 'active'
+		  AND u.status = 'active'
+		  AND s.expires_at > now()
+		FOR UPDATE OF s
+	`, id).Scan(&subscriptionID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	var exists bool
+	if existsErr := queryer.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM subscriptions WHERE id = $1)`, id).Scan(&exists); existsErr != nil {
+		return existsErr
+	}
+	if !exists {
+		return ErrNotFound
+	}
+	return ErrSubscriptionAccessUnavailable
 }
 
 func buildVLESSRealityURI(endpoint SubscriptionAccessEndpoint, client SubscriptionAccessClient, displayName string) string {

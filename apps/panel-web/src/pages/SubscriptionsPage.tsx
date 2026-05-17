@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  createSubscriptionAccessToken,
   createSubscription,
   getSubscriptionAccess,
   listPlans,
@@ -7,10 +8,13 @@ import {
   listUsers,
   PanelApiError,
   renewSubscription,
+  revokeSubscriptionAccessToken,
+  rotateSubscriptionAccessToken,
   updateSubscription,
   type Plan,
   type Subscription,
   type SubscriptionAccess,
+  type SubscriptionAccessToken,
   type User,
 } from "../lib/api";
 import type { StoredSession } from "../lib/session";
@@ -49,6 +53,8 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
   const [mutatingSubscriptionID, setMutatingSubscriptionID] = useState<string | null>(null);
   const [accessSubscriptionID, setAccessSubscriptionID] = useState<string | null>(null);
   const [subscriptionAccess, setSubscriptionAccess] = useState<SubscriptionAccess | null>(null);
+  const [accessTokenResult, setAccessTokenResult] = useState<SubscriptionAccessToken | null>(null);
+  const [tokenAction, setTokenAction] = useState<"issue" | "rotate" | "revoke" | null>(null);
 
   const activeSubscriptions = useMemo(
     () => subscriptions.filter((subscription) => subscription.status === "active").length,
@@ -141,6 +147,7 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
     try {
       const access = await getSubscriptionAccess(session, subscription.id);
       setSubscriptionAccess(access);
+      setAccessTokenResult(null);
       setSuccessMessage("Subscription access export loaded.");
     } catch (error) {
       if (handleUnauthorizedError(error, onUnauthorized)) {
@@ -150,6 +157,75 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
       setErrorMessage(formatPanelError(error, "Unable to load subscription access."));
     } finally {
       setAccessSubscriptionID(null);
+    }
+  }
+
+  async function issueAccessToken() {
+    if (!subscriptionAccess) {
+      return;
+    }
+
+    setTokenAction("issue");
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const token = await createSubscriptionAccessToken(session, subscriptionAccess.subscription_id);
+      setAccessTokenResult(token);
+      setSuccessMessage("Subscription access token issued.");
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setErrorMessage(formatPanelError(error, "Unable to issue subscription access token."));
+    } finally {
+      setTokenAction(null);
+    }
+  }
+
+  async function rotateAccessToken() {
+    if (!subscriptionAccess) {
+      return;
+    }
+
+    setTokenAction("rotate");
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const token = await rotateSubscriptionAccessToken(session, subscriptionAccess.subscription_id);
+      setAccessTokenResult(token);
+      setSuccessMessage("Subscription access token rotated.");
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setErrorMessage(formatPanelError(error, "Unable to rotate subscription access token."));
+    } finally {
+      setTokenAction(null);
+    }
+  }
+
+  async function revokeAccessToken() {
+    if (!subscriptionAccess) {
+      return;
+    }
+
+    setTokenAction("revoke");
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      await revokeSubscriptionAccessToken(session, subscriptionAccess.subscription_id);
+      setAccessTokenResult(null);
+      setSuccessMessage("Subscription access token revoked.");
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setErrorMessage(formatPanelError(error, "Unable to revoke subscription access token."));
+    } finally {
+      setTokenAction(null);
     }
   }
 
@@ -516,6 +592,49 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
             VLESS URI
           </label>
           <textarea id="subscription-access-uri" className="readonly-textarea" value={subscriptionAccess.uri} readOnly rows={3} />
+          <div className="section-heading compact-heading">
+            <div>
+              <p className="eyebrow">Client token</p>
+              <h4>Access token lifecycle</h4>
+            </div>
+            <div className="row-actions">
+              <button className="table-button" type="button" onClick={issueAccessToken} disabled={tokenAction !== null}>
+                {tokenAction === "issue" ? "Issuing..." : "Issue"}
+              </button>
+              <button className="table-button" type="button" onClick={rotateAccessToken} disabled={tokenAction !== null}>
+                {tokenAction === "rotate" ? "Rotating..." : "Rotate"}
+              </button>
+              <button className="table-button danger" type="button" onClick={revokeAccessToken} disabled={tokenAction !== null}>
+                {tokenAction === "revoke" ? "Revoking..." : "Revoke"}
+              </button>
+            </div>
+          </div>
+          {accessTokenResult ? (
+            <>
+              <dl className="node-detail-grid">
+                <div>
+                  <dt>expires</dt>
+                  <dd>{formatDate(accessTokenResult.expires_at)}</dd>
+                </div>
+                <div>
+                  <dt>created</dt>
+                  <dd>{formatDate(accessTokenResult.created_at)}</dd>
+                </div>
+              </dl>
+              <label className="field-label" htmlFor="subscription-access-token">
+                Plaintext access token
+              </label>
+              <textarea
+                id="subscription-access-token"
+                className="readonly-textarea"
+                value={accessTokenResult.access_token}
+                readOnly
+                rows={3}
+              />
+            </>
+          ) : (
+            <p className="state-text">No plaintext access token is currently shown.</p>
+          )}
         </section>
       ) : null}
     </div>

@@ -134,6 +134,51 @@ func TestCreateSubscriptionAccessTokenSuccess(t *testing.T) {
 	}
 }
 
+func TestRotateSubscriptionAccessTokenSuccess(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/subscriptions/sub-1/access-token/rotate", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.RotateAccessToken(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"access_token":"lnksa_rotated-token"`) {
+		t.Fatalf("expected rotated plaintext access token response, got %s", response.Body.String())
+	}
+	if repo.rotatedAccessTokenID != "sub-1" {
+		t.Fatalf("expected subscription id to reach repository, got %q", repo.rotatedAccessTokenID)
+	}
+}
+
+func TestRevokeSubscriptionAccessTokenSuccess(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/subscriptions/sub-1/access-token", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.RevokeAccessToken(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"status":"revoked"`) {
+		t.Fatalf("expected revoked status response, got %s", response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "access_token") {
+		t.Fatalf("expected revoke response to omit token material, got %s", response.Body.String())
+	}
+	if repo.revokedAccessTokenID != "sub-1" {
+		t.Fatalf("expected subscription id to reach repository, got %q", repo.revokedAccessTokenID)
+	}
+}
+
 func TestClientAccessRequiresBearerToken(t *testing.T) {
 	handler := NewHandler(nil, &fakeSubscriptionsRepository{}, testAdminOnly)
 
@@ -200,14 +245,16 @@ func TestRenewSubscriptionValidationError(t *testing.T) {
 }
 
 type fakeSubscriptionsRepository struct {
-	created       storage.CreateSubscriptionInput
-	extendDays    int
-	accessID      string
-	accessTokenID string
-	consumerToken string
-	createErr     error
-	accessErr     error
-	consumerErr   error
+	created              storage.CreateSubscriptionInput
+	extendDays           int
+	accessID             string
+	accessTokenID        string
+	rotatedAccessTokenID string
+	revokedAccessTokenID string
+	consumerToken        string
+	createErr            error
+	accessErr            error
+	consumerErr          error
 }
 
 func (r *fakeSubscriptionsRepository) List(ctx context.Context) ([]storage.Subscription, error) {
@@ -257,6 +304,32 @@ func (r *fakeSubscriptionsRepository) CreateAccessToken(ctx context.Context, id 
 		Token:          "lnksa_test-token",
 		ExpiresAt:      now.Add(24 * time.Hour),
 		CreatedAt:      now,
+	}, nil
+}
+
+func (r *fakeSubscriptionsRepository) RotateAccessToken(ctx context.Context, id string) (storage.SubscriptionAccessToken, error) {
+	r.rotatedAccessTokenID = id
+	if r.accessErr != nil {
+		return storage.SubscriptionAccessToken{}, r.accessErr
+	}
+	now := time.Now().UTC()
+	return storage.SubscriptionAccessToken{
+		SubscriptionID: id,
+		Token:          "lnksa_rotated-token",
+		ExpiresAt:      now.Add(24 * time.Hour),
+		CreatedAt:      now,
+	}, nil
+}
+
+func (r *fakeSubscriptionsRepository) RevokeAccessToken(ctx context.Context, id string) (storage.SubscriptionAccessTokenStatus, error) {
+	r.revokedAccessTokenID = id
+	if r.accessErr != nil {
+		return storage.SubscriptionAccessTokenStatus{}, r.accessErr
+	}
+	return storage.SubscriptionAccessTokenStatus{
+		SubscriptionID: id,
+		Status:         "revoked",
+		RevokedAt:      time.Now().UTC(),
 	}, nil
 }
 

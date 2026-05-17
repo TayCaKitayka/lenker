@@ -157,12 +157,34 @@ invalid_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/clie
 log "reading client subscription access"
 client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $access_token")"
+
+log "rotating subscription access token"
+rotated_token_json="$(curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token/rotate" \
+  -H "Authorization: Bearer $admin_token")"
+rotated_token="$(printf '%s' "$rotated_token_json" | json_get data.access_token)"
+
+old_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $access_token")"
+[ "$old_token_status" = "401" ] || fail "rotated old token returned $old_token_status, expected 401"
+
+rotated_client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $rotated_token")"
+
+log "revoking rotated subscription access token"
+curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token" >/dev/null
+
+revoked_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
+  -H "Authorization: Bearer $rotated_token")"
+[ "$revoked_token_status" = "401" ] || fail "revoked token returned $revoked_token_status, expected 401"
+
 active_config_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/config.json)"
 active_metadata_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/metadata.json)"
 
-ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" ruby -rjson -ruri -e '
+ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" ROTATED_CLIENT_ACCESS="$rotated_client_access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" ruby -rjson -ruri -e '
   access = JSON.parse(ENV.fetch("ACCESS")).fetch("data")
   client_access = JSON.parse(ENV.fetch("CLIENT_ACCESS")).fetch("data")
+  rotated_client_access = JSON.parse(ENV.fetch("ROTATED_CLIENT_ACCESS")).fetch("data")
   revision = JSON.parse(ENV.fetch("REVISION")).fetch("data")
   config = JSON.parse(ENV.fetch("CONFIG"))
   metadata = JSON.parse(ENV.fetch("METADATA"))
@@ -182,6 +204,7 @@ ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" REVISION="$revision_de
   abort("client access node mismatch") unless client_access["node"] == access["node"]
   abort("client access client id mismatch") unless client_access.dig("client", "id") == access.dig("client", "id")
   abort("client access flow mismatch") unless client_access.dig("client", "flow") == access.dig("client", "flow")
+  abort("rotated client access mismatch") unless rotated_client_access == client_access
 
   entries = revision.dig("bundle", "access_entries") || []
   entry = entries.find { |item| item["subscription_id"] == subscription_id }

@@ -384,6 +384,7 @@ paths:
     post:
       tags: [Subscriptions]
       summary: Issue a subscription access token
+      description: Issues the one active subscription access token for this subscription. Any previous active token for the subscription is revoked before the new plaintext token is returned once.
       responses:
         "201":
           description: Plaintext subscription access token created. The database stores only a token hash.
@@ -397,6 +398,49 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: Subscription access token cannot be created for this subscription state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Subscriptions]
+      summary: Revoke the active subscription access token
+      description: Revokes the current active subscription access token without returning token material. The operation is safe to repeat for an existing subscription.
+      responses:
+        "200":
+          description: Active subscription access token revoked or already absent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionAccessTokenStatusEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/subscriptions/{id}/access-token/rotate:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Subscriptions]
+      summary: Rotate the active subscription access token
+      description: Revokes the previous active token and returns a new plaintext token once.
+      responses:
+        "201":
+          description: Plaintext replacement subscription access token created. The database stores only a token hash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionAccessTokenEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Subscription access token cannot be rotated for this subscription state.
           content:
             application/json:
               schema:
@@ -1274,6 +1318,25 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/SubscriptionAccessToken"
+    SubscriptionAccessTokenStatus:
+      type: object
+      required: [subscription_id, status, revoked_at]
+      properties:
+        subscription_id:
+          type: string
+        status:
+          type: string
+          enum: [revoked]
+        revoked_at:
+          type: string
+          format: date-time
+    SubscriptionAccessTokenStatusEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SubscriptionAccessTokenStatus"
     ClientSubscriptionAccess:
       type: object
       required:

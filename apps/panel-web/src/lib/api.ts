@@ -34,6 +34,14 @@ interface SubscriptionAccessResponse {
   data: SubscriptionAccess;
 }
 
+interface SubscriptionAccessTokenResponse {
+  data: SubscriptionAccessToken;
+}
+
+interface SubscriptionAccessTokenStatusResponse {
+  data: SubscriptionAccessTokenStatus;
+}
+
 interface NodeListResponse {
   data?: NodeSummary[] | null;
 }
@@ -155,6 +163,19 @@ export interface SubscriptionAccess {
   };
   display_name: string;
   uri: string;
+}
+
+export interface SubscriptionAccessToken {
+  subscription_id: string;
+  access_token: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface SubscriptionAccessTokenStatus {
+  subscription_id: string;
+  status: "revoked";
+  revoked_at: string;
 }
 
 
@@ -418,6 +439,42 @@ export async function getSubscriptionAccess(session: StoredSession, subscription
   return payload.data;
 }
 
+export async function createSubscriptionAccessToken(
+  session: StoredSession,
+  subscriptionID: string,
+): Promise<SubscriptionAccessToken> {
+  const payload = await authorizedRequest<SubscriptionAccessTokenResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/access-token`,
+    { method: "POST" },
+  );
+  return payload.data;
+}
+
+export async function rotateSubscriptionAccessToken(
+  session: StoredSession,
+  subscriptionID: string,
+): Promise<SubscriptionAccessToken> {
+  const payload = await authorizedRequest<SubscriptionAccessTokenResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/access-token/rotate`,
+    { method: "POST" },
+  );
+  return payload.data;
+}
+
+export async function revokeSubscriptionAccessToken(
+  session: StoredSession,
+  subscriptionID: string,
+): Promise<SubscriptionAccessTokenStatus> {
+  const payload = await authorizedRequest<SubscriptionAccessTokenStatusResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/access-token`,
+    { method: "DELETE" },
+  );
+  return payload.data;
+}
+
 export async function listNodes(session: StoredSession): Promise<NodeSummary[]> {
   const payload = await authorizedRequest<NodeListResponse>(session, "/api/v1/nodes");
   return readListData(payload, "nodes");
@@ -494,7 +551,7 @@ export async function rollbackNodeConfigRevision(
 }
 
 interface AuthorizedRequestOptions {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
 }
 

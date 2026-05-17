@@ -32,7 +32,7 @@ Current foundation:
 - node heartbeat status and `last_seen_at` updates
 - config revision metadata storage with deterministic signed subscription-aware VLESS Reality Xray config skeleton payloads
 - provider-side subscription access export foundation for the single VLESS Reality MVP path
-- minimal subscription access token read boundary for consumer-facing access export
+- minimal subscription access token lifecycle and read boundary for consumer-facing access export
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -73,6 +73,8 @@ Implemented foundation routes:
 - `POST /api/v1/subscriptions/{id}/renew`
 - `GET /api/v1/subscriptions/{id}/access`
 - `POST /api/v1/subscriptions/{id}/access-token`
+- `DELETE /api/v1/subscriptions/{id}/access-token`
+- `POST /api/v1/subscriptions/{id}/access-token/rotate`
 - `GET /api/v1/client/subscription-access`
 - `GET /api/v1/nodes`
 - `POST /api/v1/nodes/bootstrap-token`
@@ -128,8 +130,14 @@ Subscription access export:
 - `GET /api/v1/subscriptions/{id}/access` is admin-only.
 - It returns a deterministic `subscription_access.v1alpha1` object and VLESS URI
   for the single MVP `VLESS + Reality + XTLS Vision` path.
+- The access token lifecycle is one active token per subscription.
 - `POST /api/v1/subscriptions/{id}/access-token` is admin-only and returns a
-  plaintext access token once; panel-api stores only the token hash and expiry.
+  plaintext access token once; issuing revokes any previous active token.
+- `POST /api/v1/subscriptions/{id}/access-token/rotate` revokes the previous
+  active token and returns a replacement plaintext token once.
+- `DELETE /api/v1/subscriptions/{id}/access-token` revokes the active token
+  without returning token material.
+- Panel-api stores only token hashes and expiry timestamps.
 - `GET /api/v1/client/subscription-access` accepts
   `Authorization: Bearer <subscription_access_token>` and returns a redacted
   access export without admin session auth.

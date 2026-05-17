@@ -180,11 +180,22 @@ Return provider-side access export metadata for the supported client path.
 
 Issue a plaintext subscription access token for the active subscription.
 
+#### `POST /subscriptions/{subscriptionId}/access-token/rotate`
+
+Rotate the active subscription access token.
+
+#### `DELETE /subscriptions/{subscriptionId}/access-token`
+
+Revoke the active subscription access token without replacement.
+
 Current implementation note:
 
-This admin-only endpoint stores only a SHA-256 token hash and returns the
-plaintext token once in the response. The token expires with the subscription
-and is accepted only by the consumer-facing access read endpoint.
+The access token lifecycle uses one active token per subscription. Issue and
+rotate both revoke any previous active token before returning a new plaintext
+token once in the response. Revoke invalidates the current token without
+returning token material. Panel-api stores only SHA-256 token hashes; tokens
+expire with the subscription and are accepted only by the consumer-facing access
+read endpoint.
 
 #### `GET /client/subscription-access`
 
