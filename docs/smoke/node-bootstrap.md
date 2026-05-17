@@ -542,6 +542,26 @@ Common operator notes:
 - this runbook does not cover client-app, deeplinks, device binding,
   marketplace delivery, billing, or end-user account auth.
 
+Troubleshooting failed handoff or client-read cases:
+
+- Token was never issued: provider token status is `never_issued` and
+  `issued=false`; issue a token before handing anything to the subscriber.
+- Old token stopped working after rotation: this is expected. Status should be
+  `active` with a higher generation, and only the newest rotate response token
+  should work.
+- Token was revoked: provider status is `revoked` with `revoked_at`; client
+  reads must return `401` until a new issue or rotate response provides a new
+  plaintext token.
+- Missing or invalid Bearer token: `GET /api/v1/client/subscription-access`
+  should return `401`; check that the consumer request uses
+  `Authorization: Bearer <subscription_access_token>`, not the admin session
+  token.
+- Client read works but data differs from provider expectations: compare the
+  provider access block or `GET /api/v1/subscriptions/{id}/access` with the
+  smoke summary selected node, endpoint, protocol path, and applied revision.
+  If they differ, rerun `make docker-subscription-access-smoke` and inspect the
+  active node/config revision before handing out a new token.
+
 If node-agent is running in the Docker profile, first inspect local agent status:
 
 ```sh
