@@ -170,6 +170,14 @@ LENKER_AGENT_CONFIG_POLL_INTERVAL=2s \
 make docker-up
 ```
 
+For a scripted local Docker check of bootstrap/register -> pending revision ->
+polling apply -> runtime readiness -> persisted runtime events, run:
+
+```sh
+make docker-build
+make docker-runtime-smoke
+```
+
 `LENKER_LOCAL_XRAY_DIR` is only a local bind-mount source for
 `deploy/docker/docker-compose.local.yml`; no Xray binary is downloaded or baked
 into the image. If `LENKER_AGENT_XRAY_BIN` is set but the binary is missing, the

@@ -394,6 +394,18 @@ This check verifies the durable recent `runtime_events` path in the local stack.
 It uses the existing heartbeat/report ingestion contracts; it does not add a new
 admin workflow or backend feature.
 
+For the scripted local Docker path, run from the repository root:
+
+```sh
+make docker-build
+make docker-runtime-smoke
+```
+
+The helper starts the local stack, bootstraps the admin, creates and registers a
+node, creates a config revision, restarts node-agent with the registered node
+id/token, waits for polling apply/report, checks active local artifacts, and
+verifies node detail runtime readiness plus persisted `runtime_events`.
+
 If node-agent is running in the Docker profile, first inspect local agent status:
 
 ```sh
