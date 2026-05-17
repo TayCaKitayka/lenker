@@ -190,6 +190,24 @@ Expected result:
 - using another node token or a missing token does not return this revision;
 - if no pending revision exists, the endpoint returns `not_found`.
 
+For local Docker end-to-end polling, restart `node-agent` with the registered
+node identity after registration and revision creation:
+
+```sh
+LENKER_AGENT_NODE_ID="$LENKER_NODE_ID" \
+LENKER_AGENT_NODE_TOKEN="$LENKER_NODE_TOKEN" \
+LENKER_AGENT_CONFIG_POLL_INTERVAL=2s \
+make docker-up
+```
+
+Expected result:
+
+- node-agent polling starts instead of logging that config polling is disabled;
+- the pending revision is fetched and applied through validation plus staged ->
+  active local file switch;
+- the report endpoint marks the revision `applied`;
+- node detail shows runtime readiness metadata and recent `runtime_events`.
+
 The node-agent unit tests verify that the fetched metadata can be hash/signature
 validated, checked against the single-path Xray compatibility gate, optionally
 checked through a configured Xray binary dry-run, serialized to local config

@@ -157,6 +157,19 @@ prints the required exports, verifies the binary is executable, and does not
 start Docker. After `make docker-up`, `curl -s http://localhost:8090/status`
 should include `"xray_dry_run_enabled":true`.
 
+The local compose profile also accepts `LENKER_AGENT_NODE_ID`,
+`LENKER_AGENT_NODE_TOKEN`, `LENKER_AGENT_BOOTSTRAP_TOKEN`, and
+`LENKER_AGENT_CONFIG_POLL_INTERVAL`. After creating and registering a node
+through panel-api, restart `node-agent` with the registered node id/token to
+exercise the polling apply path:
+
+```sh
+LENKER_AGENT_NODE_ID="$LENKER_NODE_ID" \
+LENKER_AGENT_NODE_TOKEN="$LENKER_NODE_TOKEN" \
+LENKER_AGENT_CONFIG_POLL_INTERVAL=2s \
+make docker-up
+```
+
 `LENKER_LOCAL_XRAY_DIR` is only a local bind-mount source for
 `deploy/docker/docker-compose.local.yml`; no Xray binary is downloaded or baked
 into the image. If `LENKER_AGENT_XRAY_BIN` is set but the binary is missing, the
