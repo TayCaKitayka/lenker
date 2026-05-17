@@ -18,6 +18,7 @@ Current implemented foundation:
 - subscriptions page can load a compact read-only access export for the single MVP VLESS Reality path;
 - subscriptions page can show read-only subscription access token lifecycle status (`never_issued`, `active`, `revoked`) and issue, rotate, or revoke the current token for provider handoff; plaintext tokens are only shown from issue/rotate responses and are not recoverable from later status reads;
 - provider handoff remains out-of-band in this UI layer: the panel shows lifecycle status and one-time token responses but does not implement a client portal, invite link, or deeplink delivery flow;
+- operator handoff steps for issue, external delivery, verification, rotation, and revocation are documented in `docs/smoke/node-bootstrap.md`;
 - nodes management page with list, detail, bootstrap token creation, drain, undrain, disable, enable, read-only config revision metadata, and rollback revision creation flows.
 
 Run from the repository root:

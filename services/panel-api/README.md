@@ -170,6 +170,9 @@ The local `make docker-subscription-access-smoke` helper exercises the same
 handoff path and ends with a compact operational summary. That summary confirms
 the selected subscription/node/endpoint, lifecycle transitions, client read,
 rotate/revoke checks, and redaction status without printing the plaintext token.
+For operator steps around issue, out-of-band handoff, verification, rotation,
+and revocation, see the provider handoff runbook in
+`docs/smoke/node-bootstrap.md`.
 
 Use the token returned by admin login:
 

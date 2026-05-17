@@ -470,6 +470,78 @@ transition result, client-read result, rotate/revoke checks, and redaction
 status. The summary intentionally does not print the plaintext access token; the
 token remains visible only in the issue/rotate API response inside the helper.
 
+### Provider Handoff Operator Runbook
+
+Goal:
+
+- issue a subscription access token;
+- hand it to the subscriber through an external channel;
+- verify that the client read path works;
+- rotate or revoke the token when operationally needed.
+
+Preconditions:
+
+- the provider panel or local Docker stack is running;
+- an admin session is available;
+- the subscription is active;
+- at least one eligible node has an applied active config revision for the
+  subscription's current MVP path;
+- the Subscriptions access block or admin API can load the provider-side access
+  export.
+
+Happy path:
+
+1. In panel-web, open Subscriptions and select the subscription access block, or
+   call `GET /api/v1/subscriptions/{id}/access`.
+2. Confirm the selected node, endpoint host/port, protocol path, and VLESS URI
+   match the expected active node/config path.
+3. Issue a token with the panel Issue action or
+   `POST /api/v1/subscriptions/{id}/access-token`.
+4. Copy the plaintext token from that one response only. Do not store it in git,
+   docs, tickets, screenshots, logs, or long-lived notes.
+5. Hand the token to the subscriber out-of-band.
+6. The consumer path reads `GET /api/v1/client/subscription-access` with
+   `Authorization: Bearer <subscription_access_token>`.
+7. Verify the returned redacted payload and URI match the provider-side access
+   export.
+
+Expected signals:
+
+- token status is `active`, `issued=true`, and `issued_at` is visible in
+  panel-web/API status;
+- smoke summary shows `client_read: ok`,
+  `client_payload_redacted: true`, and `plaintext_token_printed: false`;
+- smoke summary selected node, endpoint, protocol path, and applied revision
+  match the active node/config path;
+- provider status reads do not return plaintext token material.
+
+Rotation path:
+
+1. Rotate with the panel Rotate action or
+   `POST /api/v1/subscriptions/{id}/access-token/rotate`.
+2. Copy and hand off the new plaintext token once.
+3. Verify the old token is rejected by the client read endpoint.
+4. Verify the rotated token can read the same redacted access payload.
+5. Confirm status remains `active` and generation advances.
+
+Revocation path:
+
+1. Revoke with the panel Revoke action or
+   `DELETE /api/v1/subscriptions/{id}/access-token`.
+2. Verify the current token is rejected by the client read endpoint.
+3. Confirm status is `revoked` and `revoked_at` remains visible.
+4. Repeated revoke is safe and should keep the same revoked lifecycle state.
+
+Common operator notes:
+
+- never use the admin Bearer token in the consumer read flow;
+- never expect a later provider status/export read to recover plaintext token
+  material;
+- treat the smoke summary as operational confirmation, not as the subscriber
+  delivery payload;
+- this runbook does not cover client-app, deeplinks, device binding,
+  marketplace delivery, billing, or end-user account auth.
+
 If node-agent is running in the Docker profile, first inspect local agent status:
 
 ```sh
