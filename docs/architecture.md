@@ -220,10 +220,11 @@ on the single MVP `VLESS + Reality + XTLS Vision` path, and can issue a
 plaintext subscription access token once through
 `POST /api/v1/subscriptions/{id}/access-token`. The lifecycle is one active
 token per subscription: issue and rotate revoke the previous active token before
-returning a new plaintext token once, and revoke invalidates the current token
-without replacement. Panel-api stores only the token hash and expiry. Consumers
-can call `GET /api/v1/client/subscription-access` with that Bearer token to read
-a redacted access export without an admin session. This does not implement full
+returning a new plaintext token once, rotate without an existing token behaves
+as a fresh issue, and revoke is idempotent for never-issued or already-revoked
+subscriptions. Panel-api stores only the token hash and expiry. Consumers can
+call `GET /api/v1/client/subscription-access` with that Bearer token to read a
+redacted access export without an admin session. This does not implement full
 end-user app authentication, device binding, marketplace provider discovery,
 billing, or multi-protocol delivery.
 

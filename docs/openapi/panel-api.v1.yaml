@@ -424,7 +424,7 @@ paths:
     delete:
       tags: [Subscriptions]
       summary: Revoke the active subscription access token
-      description: Revokes the current active subscription access token without returning token material. The operation is safe to repeat for an existing subscription.
+      description: Revokes the current active subscription access token without returning token material. The operation is idempotent; never-issued subscriptions remain never_issued and already-revoked tokens remain revoked.
       responses:
         "200":
           description: Active subscription access token revoked or already absent.
@@ -444,7 +444,7 @@ paths:
     post:
       tags: [Subscriptions]
       summary: Rotate the active subscription access token
-      description: Revokes the previous active token and returns a new plaintext token once.
+      description: Revokes the previous active token and returns a new plaintext token once. If no token exists yet, rotation behaves as a fresh issue.
       responses:
         "201":
           description: Plaintext replacement subscription access token created. The database stores only a token hash.

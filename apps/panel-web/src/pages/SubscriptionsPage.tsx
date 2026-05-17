@@ -620,24 +620,27 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
             </div>
           </div>
           {accessTokenStatus ? (
-            <dl className="node-detail-grid">
-              <div>
-                <dt>status</dt>
-                <dd>{formatAccessTokenStatus(accessTokenStatus)}</dd>
-              </div>
-              <div>
-                <dt>generation</dt>
-                <dd>{accessTokenStatus.generation || "-"}</dd>
-              </div>
-              <div>
-                <dt>issued</dt>
-                <dd>{accessTokenStatus.issued_at ? formatDate(accessTokenStatus.issued_at) : "never issued"}</dd>
-              </div>
-              <div>
-                <dt>revoked</dt>
-                <dd>{accessTokenStatus.revoked_at ? formatDate(accessTokenStatus.revoked_at) : "-"}</dd>
-              </div>
-            </dl>
+            <>
+              <dl className="node-detail-grid">
+                <div>
+                  <dt>status</dt>
+                  <dd>{formatAccessTokenStatus(accessTokenStatus)}</dd>
+                </div>
+                <div>
+                  <dt>generation</dt>
+                  <dd>{accessTokenStatus.generation || "-"}</dd>
+                </div>
+                <div>
+                  <dt>issued</dt>
+                  <dd>{accessTokenStatus.issued_at ? formatDate(accessTokenStatus.issued_at) : "never issued"}</dd>
+                </div>
+                <div>
+                  <dt>revoked</dt>
+                  <dd>{accessTokenStatus.revoked_at ? formatDate(accessTokenStatus.revoked_at) : "-"}</dd>
+                </div>
+              </dl>
+              <p className="state-text">{accessTokenStatusHint(accessTokenStatus)}</p>
+            </>
           ) : (
             <p className="state-text">Token lifecycle status is not loaded.</p>
           )}
@@ -701,6 +704,16 @@ function formatAccessTokenStatus(status: SubscriptionAccessTokenStatus): string 
     return "never issued";
   }
   return status.status;
+}
+
+function accessTokenStatusHint(status: SubscriptionAccessTokenStatus): string {
+  if (!status.issued || status.status === "never_issued") {
+    return "No client access token has been issued yet.";
+  }
+  if (status.status === "revoked") {
+    return "The latest client access token is revoked; client reads will be rejected.";
+  }
+  return "The current client access token can read the redacted subscription access payload.";
 }
 
 function tokenStatusFromToken(token: SubscriptionAccessToken, previousGeneration = 0): SubscriptionAccessTokenStatus {

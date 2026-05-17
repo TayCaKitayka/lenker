@@ -439,11 +439,15 @@ access token with `POST /api/v1/subscriptions/{id}/access-token`, reads
 
 - the access endpoint returns `subscription_access.v1alpha1`;
 - missing and invalid client access tokens return `401`;
+- initial token lifecycle status is `never_issued`;
 - the issued access token can read the redacted client access payload;
+- status becomes `active` with generation `1` after issue;
 - `POST /api/v1/subscriptions/{id}/access-token/rotate` invalidates the old
   token and the rotated token can read the same redacted payload;
+- status remains `active` and generation advances after rotate;
 - `DELETE /api/v1/subscriptions/{id}/access-token` invalidates the rotated
   token without returning token material;
+- status becomes `revoked`, and repeated revoke remains safe/idempotent;
 - the selected access node is the same active node whose config was applied;
 - the revision bundle and active `config.json` contain the exported
   subscription/client entry;

@@ -16,7 +16,7 @@ Current implemented foundation:
 - plans management page with list, create, update, and archive flows;
 - subscriptions management page with list, create, update, and renew flows;
 - subscriptions page can load a compact read-only access export for the single MVP VLESS Reality path;
-- subscriptions page can show read-only subscription access token lifecycle status and issue, rotate, or revoke the current token; plaintext tokens are only shown from issue/rotate responses;
+- subscriptions page can show read-only subscription access token lifecycle status (`never_issued`, `active`, `revoked`) and issue, rotate, or revoke the current token; plaintext tokens are only shown from issue/rotate responses;
 - nodes management page with list, detail, bootstrap token creation, drain, undrain, disable, enable, read-only config revision metadata, and rollback revision creation flows.
 
 Run from the repository root:

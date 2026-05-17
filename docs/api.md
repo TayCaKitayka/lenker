@@ -194,14 +194,16 @@ Revoke the active subscription access token without replacement.
 
 Current implementation note:
 
-The access token lifecycle uses one active token per subscription. Issue and
-rotate both revoke any previous active token before returning a new plaintext
-token once in the response. Revoke invalidates the current token without
-returning token material. The read-only status endpoint exposes whether a token
-was never issued, is active, or is revoked, plus issued/revoked timestamps and a
-generation count. Panel-api stores only SHA-256 token hashes; tokens expire with
-the subscription and are accepted only by the consumer-facing access read
-endpoint.
+The access token lifecycle uses one active token per subscription. Status values
+are stable: `never_issued`, `active`, and `revoked`. Issue and rotate both
+revoke any previous active token before returning a new plaintext token once in
+the response. Rotate with no existing token is allowed and behaves as a fresh
+issue. Revoke is idempotent: revoking a never-issued subscription returns
+`never_issued`, and revoking an already revoked token keeps `revoked`. Revoke
+never returns token material. The read-only status endpoint exposes issued and
+revoked timestamps plus a generation count. Panel-api stores only SHA-256 token
+hashes; tokens expire with the subscription and are accepted only by the
+consumer-facing access read endpoint.
 
 #### `GET /client/subscription-access`
 

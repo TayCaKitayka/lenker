@@ -138,9 +138,12 @@ Subscription access export:
 - `POST /api/v1/subscriptions/{id}/access-token` is admin-only and returns a
   plaintext access token once; issuing revokes any previous active token.
 - `POST /api/v1/subscriptions/{id}/access-token/rotate` revokes the previous
-  active token and returns a replacement plaintext token once.
+  active token and returns a replacement plaintext token once. If no token
+  exists yet, rotate behaves as a fresh issue.
 - `DELETE /api/v1/subscriptions/{id}/access-token` revokes the active token
-  without returning token material.
+  without returning token material. Revoke is idempotent: never-issued
+  subscriptions remain `never_issued`, and already revoked tokens remain
+  `revoked`.
 - Panel-api stores only token hashes and expiry timestamps.
 - `GET /api/v1/client/subscription-access` accepts
   `Authorization: Bearer <subscription_access_token>` and returns a redacted

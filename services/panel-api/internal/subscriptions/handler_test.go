@@ -158,6 +158,27 @@ func TestSubscriptionAccessTokenStatusSuccess(t *testing.T) {
 	}
 }
 
+func TestSubscriptionAccessTokenStatusNeverIssued(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{tokenStatus: "never_issued"}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/sub-1/access-token", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.AccessTokenStatus(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"status":"never_issued"`) || !strings.Contains(response.Body.String(), `"issued":false`) {
+		t.Fatalf("expected never_issued status response, got %s", response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "access_token") {
+		t.Fatalf("expected status response to omit token material, got %s", response.Body.String())
+	}
+}
+
 func TestRotateSubscriptionAccessTokenSuccess(t *testing.T) {
 	repo := &fakeSubscriptionsRepository{}
 	handler := NewHandler(nil, repo, testAdminOnly)
@@ -200,6 +221,32 @@ func TestRevokeSubscriptionAccessTokenSuccess(t *testing.T) {
 	}
 	if repo.revokedAccessTokenID != "sub-1" {
 		t.Fatalf("expected subscription id to reach repository, got %q", repo.revokedAccessTokenID)
+	}
+}
+
+func TestRevokeSubscriptionAccessTokenRepeatedIsSafe(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{tokenStatus: "revoked"}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	for i := 0; i < 2; i++ {
+		request := httptest.NewRequest(http.MethodDelete, "/api/v1/subscriptions/sub-1/access-token", nil)
+		request.SetPathValue("id", "sub-1")
+		response := httptest.NewRecorder()
+
+		handler.RevokeAccessToken(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+		}
+		if !strings.Contains(response.Body.String(), `"status":"revoked"`) {
+			t.Fatalf("expected revoked status response, got %s", response.Body.String())
+		}
+		if strings.Contains(response.Body.String(), "access_token") {
+			t.Fatalf("expected revoke response to omit token material, got %s", response.Body.String())
+		}
+	}
+	if repo.revokeCalls != 2 {
+		t.Fatalf("expected two revoke calls, got %d", repo.revokeCalls)
 	}
 }
 
@@ -277,6 +324,8 @@ type fakeSubscriptionsRepository struct {
 	rotatedAccessTokenID string
 	revokedAccessTokenID string
 	consumerToken        string
+	tokenStatus          string
+	revokeCalls          int
 	createErr            error
 	accessErr            error
 	consumerErr          error
@@ -338,6 +387,24 @@ func (r *fakeSubscriptionsRepository) AccessTokenStatus(ctx context.Context, id 
 		return storage.SubscriptionAccessTokenStatus{}, r.accessErr
 	}
 	now := time.Now().UTC()
+	switch r.tokenStatus {
+	case "never_issued":
+		return storage.SubscriptionAccessTokenStatus{
+			SubscriptionID: id,
+			Status:         "never_issued",
+			Issued:         false,
+			Generation:     0,
+		}, nil
+	case "revoked":
+		return storage.SubscriptionAccessTokenStatus{
+			SubscriptionID: id,
+			Status:         "revoked",
+			Issued:         true,
+			IssuedAt:       &now,
+			RevokedAt:      &now,
+			Generation:     1,
+		}, nil
+	}
 	return storage.SubscriptionAccessTokenStatus{
 		SubscriptionID: id,
 		Status:         "active",
@@ -363,8 +430,17 @@ func (r *fakeSubscriptionsRepository) RotateAccessToken(ctx context.Context, id 
 
 func (r *fakeSubscriptionsRepository) RevokeAccessToken(ctx context.Context, id string) (storage.SubscriptionAccessTokenStatus, error) {
 	r.revokedAccessTokenID = id
+	r.revokeCalls++
 	if r.accessErr != nil {
 		return storage.SubscriptionAccessTokenStatus{}, r.accessErr
+	}
+	if r.tokenStatus == "never_issued" {
+		return storage.SubscriptionAccessTokenStatus{
+			SubscriptionID: id,
+			Status:         "never_issued",
+			Issued:         false,
+			Generation:     0,
+		}, nil
 	}
 	now := time.Now().UTC()
 	return storage.SubscriptionAccessTokenStatus{

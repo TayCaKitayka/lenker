@@ -29,6 +29,35 @@ json_get() {
   ' "$1"
 }
 
+assert_token_status() {
+  payload="$1"
+  expected_status="$2"
+  expected_issued="$3"
+  expected_generation="$4"
+  STATUS_PAYLOAD="$payload" EXPECTED_STATUS="$expected_status" EXPECTED_ISSUED="$expected_issued" EXPECTED_GENERATION="$expected_generation" ruby -rjson -e '
+    data = JSON.parse(ENV.fetch("STATUS_PAYLOAD")).fetch("data")
+    expected_status = ENV.fetch("EXPECTED_STATUS")
+    expected_issued = ENV.fetch("EXPECTED_ISSUED") == "true"
+    expected_generation = ENV.fetch("EXPECTED_GENERATION").to_i
+    abort("token status mismatch: #{data.inspect}") unless data["status"] == expected_status
+    abort("token issued mismatch: #{data.inspect}") unless data["issued"] == expected_issued
+    abort("token generation mismatch: #{data.inspect}") unless data["generation"].to_i == expected_generation
+    abort("token status leaked plaintext: #{data.inspect}") if data.key?("access_token")
+    if expected_status == "never_issued"
+      abort("never_issued should not have issued_at: #{data.inspect}") if data.key?("issued_at")
+      abort("never_issued should not have revoked_at: #{data.inspect}") if data.key?("revoked_at")
+    end
+    if expected_status == "active"
+      abort("active token missing issued_at: #{data.inspect}") unless data["issued_at"].to_s != ""
+      abort("active token should not have revoked_at: #{data.inspect}") if data.key?("revoked_at")
+    end
+    if expected_status == "revoked"
+      abort("revoked token missing issued_at: #{data.inspect}") unless data["issued_at"].to_s != ""
+      abort("revoked token missing revoked_at: #{data.inspect}") unless data["revoked_at"].to_s != ""
+    end
+  '
+}
+
 wait_for_url() {
   url="$1"
   label="$2"
@@ -142,10 +171,18 @@ log "fetching subscription access export"
 access_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/access" \
   -H "Authorization: Bearer $admin_token")"
 
+log "checking initial token lifecycle status"
+initial_token_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token")"
+assert_token_status "$initial_token_status_json" "never_issued" "false" "0"
+
 log "issuing subscription access token"
 access_token_json="$(curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
   -H "Authorization: Bearer $admin_token")"
 access_token="$(printf '%s' "$access_token_json" | json_get data.access_token)"
+issued_token_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token")"
+assert_token_status "$issued_token_status_json" "active" "true" "1"
 
 log "checking missing and invalid client access tokens"
 missing_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access")"
@@ -162,6 +199,9 @@ log "rotating subscription access token"
 rotated_token_json="$(curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token/rotate" \
   -H "Authorization: Bearer $admin_token")"
 rotated_token="$(printf '%s' "$rotated_token_json" | json_get data.access_token)"
+rotated_token_status_json="$(curl -fsS "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token")"
+assert_token_status "$rotated_token_status_json" "active" "true" "2"
 
 old_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $access_token")"
@@ -171,12 +211,18 @@ rotated_client_access_json="$(curl -fsS "$PANEL_URL/api/v1/client/subscription-a
   -H "Authorization: Bearer $rotated_token")"
 
 log "revoking rotated subscription access token"
-curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
-  -H "Authorization: Bearer $admin_token" >/dev/null
+revoked_token_status_json="$(curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token")"
+assert_token_status "$revoked_token_status_json" "revoked" "true" "2"
 
 revoked_token_status="$(curl -s -o /dev/null -w '%{http_code}' "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $rotated_token")"
 [ "$revoked_token_status" = "401" ] || fail "revoked token returned $revoked_token_status, expected 401"
+
+log "checking repeated revoke remains safe"
+repeated_revoke_status_json="$(curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$subscription_id/access-token" \
+  -H "Authorization: Bearer $admin_token")"
+assert_token_status "$repeated_revoke_status_json" "revoked" "true" "2"
 
 active_config_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/config.json)"
 active_metadata_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/metadata.json)"
