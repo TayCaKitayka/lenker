@@ -226,8 +226,10 @@ last health timestamp. It also accepts read-only runtime readiness metadata:
 `last_validation_status`, `last_validation_error`, `last_validation_at`,
 `last_applied_revision`, `active_config_path`, runtime preparation fields, and
 the explicit `runtime_process_mode` / `runtime_process_state` process runner
-gate. Unknown nodes return `not_found`. It does not register new nodes, and it
-does not store metrics, logs, config blobs, or traffic accounting.
+gate. Heartbeats may also include a compact `runtime_events` slice; panel-api
+keeps only the newest bounded recent events per node. Unknown nodes return
+`not_found`. It does not register new nodes, and it does not store metrics,
+logs, config blobs, or traffic accounting.
 
 #### `GET /nodes/{nodeId}`
 
@@ -329,8 +331,9 @@ only its own revision as `applied` or `failed`. Applied reports set the revision
 advanced on failed validation. Xray compatibility failures use stable summaries
 such as `invalid_xray_config:invalid_routing_outbound_reference`; optional Xray
 binary dry-run failures use `xray_dry_run_failed:<reason>`. Reports also update
-the node read-only runtime readiness fields shown in admin node detail. It does
-not execute rollback, restart processes, or control Xray. The optional
+the node read-only runtime readiness fields shown in admin node detail and may
+carry the same bounded `runtime_events` trail as heartbeat. It does not execute
+rollback, restart processes, or control Xray. The optional
 `runtime_process_mode=local` value is only a node-agent local skeleton signal;
 it does not mean the panel starts or supervises a daemon.
 

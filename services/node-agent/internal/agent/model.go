@@ -78,26 +78,27 @@ type RegistrationResponse struct {
 }
 
 type HeartbeatPayload struct {
-	NodeID               string    `json:"node_id"`
-	AgentVersion         string    `json:"agent_version"`
-	Status               string    `json:"status"`
-	ActiveRevision       int       `json:"active_revision"`
-	RuntimeMode          string    `json:"runtime_mode,omitempty"`
-	RuntimeProcessMode   string    `json:"runtime_process_mode,omitempty"`
-	RuntimeProcessState  string    `json:"runtime_process_state,omitempty"`
-	RuntimeDesiredState  string    `json:"runtime_desired_state,omitempty"`
-	RuntimeState         string    `json:"runtime_state,omitempty"`
-	LastDryRunStatus     string    `json:"last_dry_run_status,omitempty"`
-	LastRuntimeAttempt   string    `json:"last_runtime_attempt_status,omitempty"`
-	LastRuntimePrepared  int       `json:"last_runtime_prepared_revision,omitempty"`
-	LastRuntimeAt        time.Time `json:"last_runtime_transition_at,omitempty"`
-	LastRuntimeError     string    `json:"last_runtime_error,omitempty"`
-	LastValidationStatus string    `json:"last_validation_status,omitempty"`
-	LastValidationError  string    `json:"last_validation_error,omitempty"`
-	LastValidationAt     time.Time `json:"last_validation_at,omitempty"`
-	LastAppliedRevision  int       `json:"last_applied_revision,omitempty"`
-	ActiveConfigPath     string    `json:"active_config_path,omitempty"`
-	SentAt               time.Time `json:"sent_at"`
+	NodeID               string         `json:"node_id"`
+	AgentVersion         string         `json:"agent_version"`
+	Status               string         `json:"status"`
+	ActiveRevision       int            `json:"active_revision"`
+	RuntimeMode          string         `json:"runtime_mode,omitempty"`
+	RuntimeProcessMode   string         `json:"runtime_process_mode,omitempty"`
+	RuntimeProcessState  string         `json:"runtime_process_state,omitempty"`
+	RuntimeDesiredState  string         `json:"runtime_desired_state,omitempty"`
+	RuntimeState         string         `json:"runtime_state,omitempty"`
+	LastDryRunStatus     string         `json:"last_dry_run_status,omitempty"`
+	LastRuntimeAttempt   string         `json:"last_runtime_attempt_status,omitempty"`
+	LastRuntimePrepared  int            `json:"last_runtime_prepared_revision,omitempty"`
+	LastRuntimeAt        time.Time      `json:"last_runtime_transition_at,omitempty"`
+	LastRuntimeError     string         `json:"last_runtime_error,omitempty"`
+	LastValidationStatus string         `json:"last_validation_status,omitempty"`
+	LastValidationError  string         `json:"last_validation_error,omitempty"`
+	LastValidationAt     time.Time      `json:"last_validation_at,omitempty"`
+	LastAppliedRevision  int            `json:"last_applied_revision,omitempty"`
+	ActiveConfigPath     string         `json:"active_config_path,omitempty"`
+	RuntimeEvents        []RuntimeEvent `json:"runtime_events,omitempty"`
+	SentAt               time.Time      `json:"sent_at"`
 }
 
 type ConfigRevision struct {
@@ -115,27 +116,28 @@ type ConfigRevision struct {
 }
 
 type ConfigRevisionReport struct {
-	Status               string    `json:"status"`
-	AppliedAt            time.Time `json:"applied_at,omitempty"`
-	FailedAt             time.Time `json:"failed_at,omitempty"`
-	ErrorMessage         string    `json:"error_message,omitempty"`
-	ActiveRevision       int       `json:"active_revision,omitempty"`
-	RuntimeMode          string    `json:"runtime_mode,omitempty"`
-	RuntimeProcessMode   string    `json:"runtime_process_mode,omitempty"`
-	RuntimeProcessState  string    `json:"runtime_process_state,omitempty"`
-	RuntimeDesiredState  string    `json:"runtime_desired_state,omitempty"`
-	RuntimeState         string    `json:"runtime_state,omitempty"`
-	LastDryRunStatus     string    `json:"last_dry_run_status,omitempty"`
-	LastRuntimeAttempt   string    `json:"last_runtime_attempt_status,omitempty"`
-	LastRuntimePrepared  int       `json:"last_runtime_prepared_revision,omitempty"`
-	LastRuntimeAt        time.Time `json:"last_runtime_transition_at,omitempty"`
-	LastRuntimeError     string    `json:"last_runtime_error,omitempty"`
-	LastValidationStatus string    `json:"last_validation_status,omitempty"`
-	LastValidationError  string    `json:"last_validation_error,omitempty"`
-	LastValidationAt     time.Time `json:"last_validation_at,omitempty"`
-	LastAppliedRevision  int       `json:"last_applied_revision,omitempty"`
-	ActiveConfigPath     string    `json:"active_config_path,omitempty"`
-	SentAt               time.Time `json:"sent_at,omitempty"`
+	Status               string         `json:"status"`
+	AppliedAt            time.Time      `json:"applied_at,omitempty"`
+	FailedAt             time.Time      `json:"failed_at,omitempty"`
+	ErrorMessage         string         `json:"error_message,omitempty"`
+	ActiveRevision       int            `json:"active_revision,omitempty"`
+	RuntimeMode          string         `json:"runtime_mode,omitempty"`
+	RuntimeProcessMode   string         `json:"runtime_process_mode,omitempty"`
+	RuntimeProcessState  string         `json:"runtime_process_state,omitempty"`
+	RuntimeDesiredState  string         `json:"runtime_desired_state,omitempty"`
+	RuntimeState         string         `json:"runtime_state,omitempty"`
+	LastDryRunStatus     string         `json:"last_dry_run_status,omitempty"`
+	LastRuntimeAttempt   string         `json:"last_runtime_attempt_status,omitempty"`
+	LastRuntimePrepared  int            `json:"last_runtime_prepared_revision,omitempty"`
+	LastRuntimeAt        time.Time      `json:"last_runtime_transition_at,omitempty"`
+	LastRuntimeError     string         `json:"last_runtime_error,omitempty"`
+	LastValidationStatus string         `json:"last_validation_status,omitempty"`
+	LastValidationError  string         `json:"last_validation_error,omitempty"`
+	LastValidationAt     time.Time      `json:"last_validation_at,omitempty"`
+	LastAppliedRevision  int            `json:"last_applied_revision,omitempty"`
+	ActiveConfigPath     string         `json:"active_config_path,omitempty"`
+	RuntimeEvents        []RuntimeEvent `json:"runtime_events,omitempty"`
+	SentAt               time.Time      `json:"sent_at,omitempty"`
 }
 
 type RollbackPlan struct {

@@ -181,9 +181,9 @@ Rollback is a revision-level file switch foundation: panel-api can create a
 pending rollback revision from an applied source, and the agent applies it
 through the same validation and staged -> active local file path. The agent
 reports read-only runtime readiness metadata (`last_validation_status`, error,
-timestamp, last applied revision, and active config path) through the revision
-report and heartbeat contracts so panel admins can inspect the latest local
-validation result.
+timestamp, last applied revision, active config path, and a bounded
+`runtime_events` slice) through the revision report and heartbeat contracts so
+panel admins can inspect the latest local validation result.
 
 Node-agent also has a no-process runtime supervisor skeleton. It tracks
 `runtime_mode`, `runtime_process_mode`, `runtime_process_state`, desired
@@ -198,10 +198,12 @@ a fakeable prepare/start intent boundary for a future local runner and reports
 restart, process watchdog, or systemd integration. The dev profile does not
 download or bake Xray into images.
 
-Node-agent keeps a small bounded local `runtime_events` trail in `/status` and
+Node-agent keeps a small bounded `runtime_events` trail in `/status` and
 `state.json` for the newest apply success/failure, validation failure, Xray
-dry-run failure, and local process prepare/start intent events. This is a
-node-local operational trail, not a durable panel-api audit stream yet.
+dry-run failure, and local process prepare/start intent events. The same compact
+slice can be ingested by panel-api through heartbeat/report and stored on the
+node record as recent operational context. It is deliberately not a general
+audit event platform.
 
 ### Boundary 3: User App to Panel
 

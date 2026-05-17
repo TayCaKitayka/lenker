@@ -115,6 +115,8 @@ metadata from node-agent: `runtime_mode`, `runtime_process_mode`,
 `last_runtime_error`. These fields describe the no-process/dry-run-only local
 runtime skeleton plus the explicit disabled/local process runner gate. They do
 not imply that panel-api starts, reloads, restarts, or supervises Xray.
+Heartbeat and revision reports may also carry a compact `runtime_events` slice;
+panel-api stores only a bounded recent trail on the node record.
 
 Use the token returned by admin login:
 
@@ -422,8 +424,9 @@ Applied reports update revision status and node `active_revision`. Failed
 reports persist `failed_at` and `error_message`, and node `active_revision` does
 not move. Report and heartbeat payloads can also persist node runtime readiness
 metadata: `last_validation_status`, `last_validation_error`,
-`last_validation_at`, `last_applied_revision`, and `active_config_path`. The
-report path does not execute rollback, restart processes, or control Xray.
+`last_validation_at`, `last_applied_revision`, `active_config_path`, and the
+bounded recent `runtime_events` slice. The report path does not execute
+rollback, restart processes, or control Xray.
 
 Rollback is represented as a normal pending revision created from a known-good
 applied revision:

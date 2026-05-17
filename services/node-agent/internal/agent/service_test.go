@@ -93,6 +93,13 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	service.status.LastRuntimeAttemptStatus = RuntimeAttemptSkipped
 	service.status.LastRuntimePrepared = 3
 	service.status.LastRuntimeTransitionAt = now.Add(-time.Minute)
+	service.AppendRuntimeEvent(RuntimeEvent{
+		Type:           RuntimeEventDryRunFailure,
+		Status:         "failed",
+		RevisionNumber: 4,
+		Message:        "xray_dry_run_failed:invalid_inbound",
+		At:             now.Add(-time.Minute),
+	})
 
 	payload, err := service.BuildHeartbeatPayload(now)
 	if err != nil {
@@ -115,6 +122,9 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	}
 	if payload.RuntimeProcessMode != RuntimeProcessModeDisabled || payload.RuntimeProcessState != RuntimeProcessStateDisabled {
 		t.Fatalf("expected runtime process metadata in heartbeat: %#v", payload)
+	}
+	if len(payload.RuntimeEvents) != 1 || payload.RuntimeEvents[0].Type != RuntimeEventDryRunFailure {
+		t.Fatalf("expected runtime event trail in heartbeat: %#v", payload.RuntimeEvents)
 	}
 }
 
@@ -264,12 +274,20 @@ func TestReportConfigRevisionBuildsBearerRequest(t *testing.T) {
 	err := client.ReportConfigRevision(context.Background(), "node-1", "node-token", "revision-1", ConfigRevisionReport{
 		Status:         "applied",
 		ActiveRevision: 4,
+		RuntimeEvents: []RuntimeEvent{{
+			Type:           RuntimeEventApplySuccess,
+			Status:         "applied",
+			RevisionNumber: 4,
+		}},
 	})
 	if err != nil {
 		t.Fatalf("expected report success: %v", err)
 	}
 	if decodedReport.Status != "applied" || decodedReport.ActiveRevision != 4 {
 		t.Fatalf("unexpected report body: %#v", decodedReport)
+	}
+	if len(decodedReport.RuntimeEvents) != 1 || decodedReport.RuntimeEvents[0].Type != RuntimeEventApplySuccess {
+		t.Fatalf("expected runtime events in report body: %#v", decodedReport.RuntimeEvents)
 	}
 }
 
@@ -411,6 +429,9 @@ func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
 	}
 	if client.report.RuntimeMode != RuntimeModeNoProcess || client.report.RuntimeState != RuntimeStateActiveConfigReady || client.report.LastRuntimePrepared != 4 {
 		t.Fatalf("expected applied runtime supervisor metadata report, got %#v", client.report)
+	}
+	if len(client.report.RuntimeEvents) != 1 || client.report.RuntimeEvents[0].Type != RuntimeEventApplySuccess {
+		t.Fatalf("expected applied runtime event report, got %#v", client.report.RuntimeEvents)
 	}
 	if service.Status().ActiveRevision != 4 || service.Status().LastAppliedRevision != 4 {
 		t.Fatalf("expected active revision in status: %#v", service.Status())
@@ -579,6 +600,9 @@ func TestPollPendingConfigRevisionDryRunFailureReportsFailedAndKeepsActive(t *te
 	}
 	if client.report.LastValidationStatus != "failed" || client.report.LastValidationError != "xray_dry_run_failed:invalid_inbound" {
 		t.Fatalf("expected failed runtime metadata report, got %#v", client.report)
+	}
+	if len(client.report.RuntimeEvents) != 1 || client.report.RuntimeEvents[0].Type != RuntimeEventDryRunFailure {
+		t.Fatalf("expected failed runtime event report, got %#v", client.report.RuntimeEvents)
 	}
 	if service.Status().LastValidationStatus != "failed" || service.Status().LastValidationError != "xray_dry_run_failed:invalid_inbound" {
 		t.Fatalf("expected failed validation status: %#v", service.Status())

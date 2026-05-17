@@ -153,6 +153,7 @@ func (s *Service) BuildHeartbeatPayload(now time.Time) (HeartbeatPayload, error)
 		LastValidationAt:     s.status.LastValidationAt,
 		LastAppliedRevision:  s.status.LastAppliedRevision,
 		ActiveConfigPath:     s.status.ConfigArtifactPath,
+		RuntimeEvents:        append([]RuntimeEvent(nil), s.status.RuntimeEvents...),
 		SentAt:               now.UTC(),
 	}, nil
 }
@@ -440,6 +441,7 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 			LastValidationAt:     reportTime,
 			LastAppliedRevision:  s.status.LastAppliedRevision,
 			ActiveConfigPath:     s.status.ConfigArtifactPath,
+			RuntimeEvents:        append([]RuntimeEvent(nil), s.status.RuntimeEvents...),
 			SentAt:               reportTime,
 		})
 		if reportErr != nil {
@@ -467,6 +469,7 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 		LastValidationAt:     reportTime,
 		LastAppliedRevision:  s.status.LastAppliedRevision,
 		ActiveConfigPath:     s.status.ConfigArtifactPath,
+		RuntimeEvents:        append([]RuntimeEvent(nil), s.status.RuntimeEvents...),
 		SentAt:               reportTime,
 	}); err != nil {
 		return false, err

@@ -303,26 +303,27 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		NodeID               string    `json:"node_id"`
-		AgentVersion         string    `json:"agent_version"`
-		Status               string    `json:"status"`
-		ActiveRevision       int       `json:"active_revision"`
-		RuntimeMode          string    `json:"runtime_mode"`
-		RuntimeProcessMode   string    `json:"runtime_process_mode"`
-		RuntimeProcessState  string    `json:"runtime_process_state"`
-		RuntimeDesiredState  string    `json:"runtime_desired_state"`
-		RuntimeState         string    `json:"runtime_state"`
-		LastDryRunStatus     string    `json:"last_dry_run_status"`
-		LastRuntimeAttempt   string    `json:"last_runtime_attempt_status"`
-		LastRuntimePrepared  int       `json:"last_runtime_prepared_revision"`
-		LastRuntimeAt        time.Time `json:"last_runtime_transition_at"`
-		LastRuntimeError     string    `json:"last_runtime_error"`
-		LastValidationStatus string    `json:"last_validation_status"`
-		LastValidationError  string    `json:"last_validation_error"`
-		LastValidationAt     time.Time `json:"last_validation_at"`
-		LastAppliedRevision  int       `json:"last_applied_revision"`
-		ActiveConfigPath     string    `json:"active_config_path"`
-		SentAt               time.Time `json:"sent_at"`
+		NodeID               string                 `json:"node_id"`
+		AgentVersion         string                 `json:"agent_version"`
+		Status               string                 `json:"status"`
+		ActiveRevision       int                    `json:"active_revision"`
+		RuntimeMode          string                 `json:"runtime_mode"`
+		RuntimeProcessMode   string                 `json:"runtime_process_mode"`
+		RuntimeProcessState  string                 `json:"runtime_process_state"`
+		RuntimeDesiredState  string                 `json:"runtime_desired_state"`
+		RuntimeState         string                 `json:"runtime_state"`
+		LastDryRunStatus     string                 `json:"last_dry_run_status"`
+		LastRuntimeAttempt   string                 `json:"last_runtime_attempt_status"`
+		LastRuntimePrepared  int                    `json:"last_runtime_prepared_revision"`
+		LastRuntimeAt        time.Time              `json:"last_runtime_transition_at"`
+		LastRuntimeError     string                 `json:"last_runtime_error"`
+		LastValidationStatus string                 `json:"last_validation_status"`
+		LastValidationError  string                 `json:"last_validation_error"`
+		LastValidationAt     time.Time              `json:"last_validation_at"`
+		LastAppliedRevision  int                    `json:"last_applied_revision"`
+		ActiveConfigPath     string                 `json:"active_config_path"`
+		RuntimeEvents        []storage.RuntimeEvent `json:"runtime_events"`
+		SentAt               time.Time              `json:"sent_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		httpapi.WriteBadRequest(w, "invalid JSON request body")
@@ -409,7 +410,8 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(request.LastValidationError) != "" ||
 		!request.LastValidationAt.IsZero() ||
 		request.LastAppliedRevision > 0 ||
-		strings.TrimSpace(request.ActiveConfigPath) != ""
+		strings.TrimSpace(request.ActiveConfigPath) != "" ||
+		len(request.RuntimeEvents) > 0
 
 	node, err := h.nodes.RecordHeartbeat(r.Context(), storage.HeartbeatInput{
 		NodeID:                 nodeID,
@@ -433,6 +435,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		LastValidationAt:       request.LastValidationAt,
 		LastAppliedRevision:    request.LastAppliedRevision,
 		ActiveConfigPath:       strings.TrimSpace(request.ActiveConfigPath),
+		RuntimeEvents:          request.RuntimeEvents,
 		SentAt:                 request.SentAt.UTC(),
 	})
 	if err != nil {
@@ -475,6 +478,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		"last_validation_at":             node.LastValidationAt,
 		"last_applied_revision":          node.LastAppliedRevision,
 		"active_config_path":             node.ActiveConfigPath,
+		"runtime_events":                 node.RuntimeEvents,
 		"last_seen_at":                   node.LastSeenAt,
 	}})
 }
@@ -530,27 +534,28 @@ func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Status               string    `json:"status"`
-		AppliedAt            time.Time `json:"applied_at"`
-		FailedAt             time.Time `json:"failed_at"`
-		ErrorMessage         string    `json:"error_message"`
-		ActiveRevision       int       `json:"active_revision"`
-		RuntimeMode          string    `json:"runtime_mode"`
-		RuntimeProcessMode   string    `json:"runtime_process_mode"`
-		RuntimeProcessState  string    `json:"runtime_process_state"`
-		RuntimeDesiredState  string    `json:"runtime_desired_state"`
-		RuntimeState         string    `json:"runtime_state"`
-		LastDryRunStatus     string    `json:"last_dry_run_status"`
-		LastRuntimeAttempt   string    `json:"last_runtime_attempt_status"`
-		LastRuntimePrepared  int       `json:"last_runtime_prepared_revision"`
-		LastRuntimeAt        time.Time `json:"last_runtime_transition_at"`
-		LastRuntimeError     string    `json:"last_runtime_error"`
-		LastValidationStatus string    `json:"last_validation_status"`
-		LastValidationError  string    `json:"last_validation_error"`
-		LastValidationAt     time.Time `json:"last_validation_at"`
-		LastAppliedRevision  int       `json:"last_applied_revision"`
-		ActiveConfigPath     string    `json:"active_config_path"`
-		SentAt               time.Time `json:"sent_at"`
+		Status               string                 `json:"status"`
+		AppliedAt            time.Time              `json:"applied_at"`
+		FailedAt             time.Time              `json:"failed_at"`
+		ErrorMessage         string                 `json:"error_message"`
+		ActiveRevision       int                    `json:"active_revision"`
+		RuntimeMode          string                 `json:"runtime_mode"`
+		RuntimeProcessMode   string                 `json:"runtime_process_mode"`
+		RuntimeProcessState  string                 `json:"runtime_process_state"`
+		RuntimeDesiredState  string                 `json:"runtime_desired_state"`
+		RuntimeState         string                 `json:"runtime_state"`
+		LastDryRunStatus     string                 `json:"last_dry_run_status"`
+		LastRuntimeAttempt   string                 `json:"last_runtime_attempt_status"`
+		LastRuntimePrepared  int                    `json:"last_runtime_prepared_revision"`
+		LastRuntimeAt        time.Time              `json:"last_runtime_transition_at"`
+		LastRuntimeError     string                 `json:"last_runtime_error"`
+		LastValidationStatus string                 `json:"last_validation_status"`
+		LastValidationError  string                 `json:"last_validation_error"`
+		LastValidationAt     time.Time              `json:"last_validation_at"`
+		LastAppliedRevision  int                    `json:"last_applied_revision"`
+		ActiveConfigPath     string                 `json:"active_config_path"`
+		RuntimeEvents        []storage.RuntimeEvent `json:"runtime_events"`
+		SentAt               time.Time              `json:"sent_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		httpapi.WriteBadRequest(w, "invalid JSON request body")
@@ -644,6 +649,7 @@ func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
 		LastValidationAt:       lastValidationAt,
 		LastAppliedRevision:    request.LastAppliedRevision,
 		ActiveConfigPath:       strings.TrimSpace(request.ActiveConfigPath),
+		RuntimeEvents:          request.RuntimeEvents,
 		SentAt:                 request.SentAt,
 	})
 	if err != nil {
@@ -746,6 +752,7 @@ func nodeDetailResponse(node storage.Node) map[string]any {
 		"last_validation_at":             node.LastValidationAt,
 		"last_applied_revision":          node.LastAppliedRevision,
 		"active_config_path":             node.ActiveConfigPath,
+		"runtime_events":                 node.RuntimeEvents,
 		"last_health_at":                 node.LastHealthAt,
 		"last_seen_at":                   node.LastSeenAt,
 		"registered_at":                  node.RegisteredAt,

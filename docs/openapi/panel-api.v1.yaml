@@ -1224,6 +1224,34 @@ components:
         active_config_path:
           type: string
           description: Node-local active config artifact path reported by node-agent.
+    RuntimeEvent:
+      type: object
+      description: Compact node-agent runtime event retained as a bounded recent trail per node.
+      properties:
+        type:
+          type: string
+          enum: [apply_success, apply_failure, validation_failure, dry_run_failure, process_prepare_start_intent, runtime_event]
+        status:
+          type: string
+          enum: ["", applied, failed, ready]
+        revision_number:
+          type: integer
+          minimum: 0
+        message:
+          type: string
+          maxLength: 240
+        runtime_mode:
+          type: string
+          enum: [no-process, dry-run-only, future-process-managed]
+        runtime_process_mode:
+          type: string
+          enum: [disabled, local]
+        runtime_process_state:
+          type: string
+          enum: [disabled, ready, failed]
+        at:
+          type: string
+          format: date-time
     Node:
       allOf:
         - $ref: "#/components/schemas/NodeSummary"
@@ -1239,6 +1267,11 @@ components:
               type: string
               format: date-time
               nullable: true
+            runtime_events:
+              type: array
+              maxItems: 20
+              items:
+                $ref: "#/components/schemas/RuntimeEvent"
             updated_at:
               type: string
               format: date-time
@@ -1379,6 +1412,11 @@ components:
         active_config_path:
           type: string
           description: Node-local active config artifact path.
+        runtime_events:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/RuntimeEvent"
         sent_at:
           type: string
           format: date-time
@@ -1494,6 +1532,11 @@ components:
         active_config_path:
           type: string
           description: Node-local active config artifact path.
+        runtime_events:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/RuntimeEvent"
         sent_at:
           type: string
           format: date-time
@@ -1555,6 +1598,11 @@ components:
           minimum: 0
         active_config_path:
           type: string
+        runtime_events:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/RuntimeEvent"
         last_seen_at:
           type: string
           format: date-time

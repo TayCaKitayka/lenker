@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,6 +80,19 @@ func TestScanConfigRevisionReturnsSignedPayloadAsBundle(t *testing.T) {
 
 func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
 	now := time.Date(2026, 5, 16, 1, 2, 3, 0, time.UTC)
+	runtimeEvents, err := json.Marshal([]RuntimeEvent{{
+		Type:                "dry_run_failure",
+		Status:              "failed",
+		RevisionNumber:      3,
+		Message:             "xray_dry_run_failed:invalid_inbound",
+		RuntimeMode:         "dry-run-only",
+		RuntimeProcessMode:  "local",
+		RuntimeProcessState: "failed",
+		At:                  now,
+	}})
+	if err != nil {
+		t.Fatalf("expected runtime events json: %v", err)
+	}
 	node, err := scanNode(fakeRow{
 		"node-1",
 		"finland-1",
@@ -105,6 +119,7 @@ func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
 		now,
 		3,
 		"/var/lib/lenker/node-agent/active/config.json",
+		runtimeEvents,
 		now,
 		now,
 		now,
@@ -130,6 +145,41 @@ func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
 	}
 	if node.LastRuntimeAt == nil || !node.LastRuntimeAt.Equal(now) || node.LastRuntimePrepared != 3 {
 		t.Fatalf("unexpected runtime transition metadata: %#v", node)
+	}
+	if len(node.RuntimeEvents) != 1 || node.RuntimeEvents[0].Type != "dry_run_failure" || node.RuntimeEvents[0].RevisionNumber != 3 {
+		t.Fatalf("unexpected runtime events: %#v", node.RuntimeEvents)
+	}
+}
+
+func TestNormalizeRuntimeEventsBoundsAndCompacts(t *testing.T) {
+	now := time.Date(2026, 5, 16, 1, 2, 3, 0, time.UTC)
+	events := make([]RuntimeEvent, 0, runtimeEventsLimit+3)
+	for i := 1; i <= runtimeEventsLimit+3; i++ {
+		events = append(events, RuntimeEvent{
+			Type:                "unknown",
+			Status:              "unexpected",
+			RevisionNumber:      i,
+			Message:             "  " + strings.Repeat("x", 300) + "  ",
+			RuntimeMode:         "unexpected",
+			RuntimeProcessMode:  "unexpected",
+			RuntimeProcessState: "unexpected",
+			At:                  now,
+		})
+	}
+
+	normalized := normalizeRuntimeEvents(events)
+
+	if len(normalized) != runtimeEventsLimit {
+		t.Fatalf("expected bounded runtime event slice, got %d", len(normalized))
+	}
+	if normalized[0].RevisionNumber != 4 || normalized[len(normalized)-1].RevisionNumber != runtimeEventsLimit+3 {
+		t.Fatalf("expected newest runtime events to be retained, got %#v", normalized)
+	}
+	if normalized[0].Type != "runtime_event" || normalized[0].Status != "" {
+		t.Fatalf("expected compact stable defaults, got %#v", normalized[0])
+	}
+	if len(normalized[0].Message) != 240 {
+		t.Fatalf("expected compact runtime event message, got %d", len(normalized[0].Message))
 	}
 }
 

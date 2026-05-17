@@ -24,36 +24,50 @@ var (
 	ErrInvalidNodeTransition = errors.New("invalid node transition")
 )
 
+const runtimeEventsLimit = 20
+
 type Node struct {
-	ID                   string     `json:"id"`
-	Name                 string     `json:"name"`
-	Region               string     `json:"region"`
-	CountryCode          string     `json:"country_code"`
-	Hostname             string     `json:"hostname"`
-	Status               string     `json:"status"`
-	DrainState           string     `json:"drain_state"`
-	AgentVersion         string     `json:"agent_version"`
-	XrayVersion          string     `json:"xray_version"`
-	ActiveRevision       int        `json:"active_revision"`
-	RuntimeMode          string     `json:"runtime_mode"`
-	RuntimeProcessMode   string     `json:"runtime_process_mode"`
-	RuntimeProcessState  string     `json:"runtime_process_state"`
-	RuntimeDesiredState  string     `json:"runtime_desired_state"`
-	RuntimeState         string     `json:"runtime_state"`
-	LastDryRunStatus     string     `json:"last_dry_run_status"`
-	LastRuntimeAttempt   string     `json:"last_runtime_attempt_status"`
-	LastRuntimePrepared  int        `json:"last_runtime_prepared_revision"`
-	LastRuntimeAt        *time.Time `json:"last_runtime_transition_at"`
-	LastRuntimeError     string     `json:"last_runtime_error"`
-	LastValidationStatus string     `json:"last_validation_status"`
-	LastValidationError  string     `json:"last_validation_error"`
-	LastValidationAt     *time.Time `json:"last_validation_at"`
-	LastAppliedRevision  int        `json:"last_applied_revision"`
-	ActiveConfigPath     string     `json:"active_config_path"`
-	LastHealthAt         *time.Time `json:"last_health_at"`
-	LastSeenAt           *time.Time `json:"last_seen_at"`
-	RegisteredAt         *time.Time `json:"registered_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	ID                   string         `json:"id"`
+	Name                 string         `json:"name"`
+	Region               string         `json:"region"`
+	CountryCode          string         `json:"country_code"`
+	Hostname             string         `json:"hostname"`
+	Status               string         `json:"status"`
+	DrainState           string         `json:"drain_state"`
+	AgentVersion         string         `json:"agent_version"`
+	XrayVersion          string         `json:"xray_version"`
+	ActiveRevision       int            `json:"active_revision"`
+	RuntimeMode          string         `json:"runtime_mode"`
+	RuntimeProcessMode   string         `json:"runtime_process_mode"`
+	RuntimeProcessState  string         `json:"runtime_process_state"`
+	RuntimeDesiredState  string         `json:"runtime_desired_state"`
+	RuntimeState         string         `json:"runtime_state"`
+	LastDryRunStatus     string         `json:"last_dry_run_status"`
+	LastRuntimeAttempt   string         `json:"last_runtime_attempt_status"`
+	LastRuntimePrepared  int            `json:"last_runtime_prepared_revision"`
+	LastRuntimeAt        *time.Time     `json:"last_runtime_transition_at"`
+	LastRuntimeError     string         `json:"last_runtime_error"`
+	LastValidationStatus string         `json:"last_validation_status"`
+	LastValidationError  string         `json:"last_validation_error"`
+	LastValidationAt     *time.Time     `json:"last_validation_at"`
+	LastAppliedRevision  int            `json:"last_applied_revision"`
+	ActiveConfigPath     string         `json:"active_config_path"`
+	RuntimeEvents        []RuntimeEvent `json:"runtime_events"`
+	LastHealthAt         *time.Time     `json:"last_health_at"`
+	LastSeenAt           *time.Time     `json:"last_seen_at"`
+	RegisteredAt         *time.Time     `json:"registered_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+}
+
+type RuntimeEvent struct {
+	Type                string    `json:"type"`
+	Status              string    `json:"status"`
+	RevisionNumber      int       `json:"revision_number,omitempty"`
+	Message             string    `json:"message,omitempty"`
+	RuntimeMode         string    `json:"runtime_mode,omitempty"`
+	RuntimeProcessMode  string    `json:"runtime_process_mode,omitempty"`
+	RuntimeProcessState string    `json:"runtime_process_state,omitempty"`
+	At                  time.Time `json:"at"`
 }
 
 type CreateBootstrapTokenInput struct {
@@ -107,6 +121,7 @@ type HeartbeatInput struct {
 	LastValidationAt       time.Time
 	LastAppliedRevision    int
 	ActiveConfigPath       string
+	RuntimeEvents          []RuntimeEvent
 	SentAt                 time.Time
 }
 
@@ -162,6 +177,7 @@ type ReportConfigRevisionInput struct {
 	LastValidationAt       time.Time
 	LastAppliedRevision    int
 	ActiveConfigPath       string
+	RuntimeEvents          []RuntimeEvent
 	SentAt                 time.Time
 }
 
@@ -193,7 +209,7 @@ func NewNodesRepository(db *sql.DB) NodesRepository {
 
 func (r *nodesRepository) List(ctx context.Context) ([]Node, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, runtime_events, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		ORDER BY created_at DESC
 	`)
@@ -218,7 +234,7 @@ func (r *nodesRepository) List(ctx context.Context) ([]Node, error) {
 
 func (r *nodesRepository) FindByID(ctx context.Context, id string) (Node, error) {
 	node, err := scanNode(r.db.QueryRowContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, runtime_events, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		WHERE id = $1
 	`, id))
@@ -338,7 +354,7 @@ func (r *nodesRepository) Register(ctx context.Context, input RegisterNodeInput)
 		    updated_at = $5
 		WHERE id = $1
 		  AND status IN ('pending', 'active', 'unhealthy', 'drained')
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, runtime_events, last_health_at, last_seen_at, registered_at, updated_at
 	`, tokenNodeID, input.Hostname, input.AgentVersion, HashNodeToken(nodeToken), now))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -398,15 +414,16 @@ func (r *nodesRepository) RecordHeartbeat(ctx context.Context, input HeartbeatIn
 		    last_validation_at = CASE WHEN $6 THEN $19 ELSE last_validation_at END,
 		    last_applied_revision = CASE WHEN $6 THEN $20 ELSE last_applied_revision END,
 		    active_config_path = CASE WHEN $6 THEN $21 ELSE active_config_path END,
-		    last_health_at = $22,
-		    last_seen_at = $22,
+		    runtime_events = CASE WHEN $6 THEN $22 ELSE runtime_events END,
+		    last_health_at = $23,
+		    last_seen_at = $23,
 		    updated_at = now()
 		WHERE id = $1
 		  AND auth_token_hash = $2
 		  AND registered_at IS NOT NULL
 		  AND status != 'disabled'
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
-	`, input.NodeID, HashNodeToken(input.NodeToken), input.Status, input.AgentVersion, input.ActiveRevision, input.RuntimeMetadataPresent, normalizeRuntimeMode(input.RuntimeMode), normalizeRuntimeProcessMode(input.RuntimeProcessMode), normalizeRuntimeProcessState(input.RuntimeProcessState), normalizeRuntimeDesiredState(input.RuntimeDesiredState), normalizeRuntimeState(input.RuntimeState), normalizeDryRunStatus(input.LastDryRunStatus), normalizeRuntimeAttempt(input.LastRuntimeAttempt), input.LastRuntimePrepared, nullableTime(input.LastRuntimeAt), strings.TrimSpace(input.LastRuntimeError), normalizeValidationStatus(input.LastValidationStatus), strings.TrimSpace(input.LastValidationError), nullableTime(input.LastValidationAt), input.LastAppliedRevision, strings.TrimSpace(input.ActiveConfigPath), input.SentAt))
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, runtime_events, last_health_at, last_seen_at, registered_at, updated_at
+	`, input.NodeID, HashNodeToken(input.NodeToken), input.Status, input.AgentVersion, input.ActiveRevision, input.RuntimeMetadataPresent, normalizeRuntimeMode(input.RuntimeMode), normalizeRuntimeProcessMode(input.RuntimeProcessMode), normalizeRuntimeProcessState(input.RuntimeProcessState), normalizeRuntimeDesiredState(input.RuntimeDesiredState), normalizeRuntimeState(input.RuntimeState), normalizeDryRunStatus(input.LastDryRunStatus), normalizeRuntimeAttempt(input.LastRuntimeAttempt), input.LastRuntimePrepared, nullableTime(input.LastRuntimeAt), strings.TrimSpace(input.LastRuntimeError), normalizeValidationStatus(input.LastValidationStatus), strings.TrimSpace(input.LastValidationError), nullableTime(input.LastValidationAt), input.LastAppliedRevision, strings.TrimSpace(input.ActiveConfigPath), runtimeEventsJSON(input.RuntimeEvents), input.SentAt))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Node{}, ErrNotFound
@@ -877,6 +894,7 @@ func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input Report
 	}
 	lastRuntimeAt = lastRuntimeAt.UTC()
 	lastRuntimeError := strings.TrimSpace(input.LastRuntimeError)
+	runtimeEvents := runtimeEventsJSON(input.RuntimeEvents)
 
 	var revision ConfigRevision
 	if input.Status == "applied" {
@@ -944,12 +962,13 @@ func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input Report
 			    last_validation_at = $14,
 			    last_applied_revision = $15,
 			    active_config_path = $16,
+			    runtime_events = $17,
 			    updated_at = $14
 			WHERE id = $1
-			  AND auth_token_hash = $17
+			  AND auth_token_hash = $18
 			  AND registered_at IS NOT NULL
 			  AND status != 'disabled'
-		`, input.NodeID, revision.RevisionNumber, runtimeMode, runtimeProcessMode, runtimeProcessState, runtimeDesiredState, runtimeState, lastDryRunStatus, lastRuntimeAttempt, lastRuntimePrepared, lastRuntimeAt, lastRuntimeError, validationStatus, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
+		`, input.NodeID, revision.RevisionNumber, runtimeMode, runtimeProcessMode, runtimeProcessState, runtimeDesiredState, runtimeState, lastDryRunStatus, lastRuntimeAttempt, lastRuntimePrepared, lastRuntimeAt, lastRuntimeError, validationStatus, validationAt, lastAppliedRevision, activeConfigPath, runtimeEvents, HashNodeToken(input.NodeToken)); err != nil {
 			return ConfigRevision{}, err
 		}
 	} else {
@@ -970,12 +989,13 @@ func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input Report
 			    last_validation_at = $14,
 			    last_applied_revision = CASE WHEN $15 > 0 THEN $15 ELSE last_applied_revision END,
 			    active_config_path = CASE WHEN $16 <> '' THEN $16 ELSE active_config_path END,
+			    runtime_events = $17,
 			    updated_at = $14
 			WHERE id = $1
-			  AND auth_token_hash = $17
+			  AND auth_token_hash = $18
 			  AND registered_at IS NOT NULL
 			  AND status != 'disabled'
-		`, input.NodeID, runtimeMode, runtimeProcessMode, runtimeProcessState, runtimeDesiredState, runtimeState, lastDryRunStatus, lastRuntimeAttempt, lastRuntimePrepared, lastRuntimeAt, lastRuntimeError, validationStatus, validationError, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
+		`, input.NodeID, runtimeMode, runtimeProcessMode, runtimeProcessState, runtimeDesiredState, runtimeState, lastDryRunStatus, lastRuntimeAttempt, lastRuntimePrepared, lastRuntimeAt, lastRuntimeError, validationStatus, validationError, validationAt, lastAppliedRevision, activeConfigPath, runtimeEvents, HashNodeToken(input.NodeToken)); err != nil {
 			return ConfigRevision{}, err
 		}
 	}
@@ -1032,6 +1052,7 @@ func scanNode(row rowScanner) (Node, error) {
 	var node Node
 	var lastRuntimeAt sql.NullTime
 	var lastValidationAt sql.NullTime
+	var runtimeEventsJSON []byte
 	var lastHealthAt sql.NullTime
 	var lastSeenAt sql.NullTime
 	var registeredAt sql.NullTime
@@ -1061,6 +1082,7 @@ func scanNode(row rowScanner) (Node, error) {
 		&lastValidationAt,
 		&node.LastAppliedRevision,
 		&node.ActiveConfigPath,
+		&runtimeEventsJSON,
 		&lastHealthAt,
 		&lastSeenAt,
 		&registeredAt,
@@ -1074,6 +1096,12 @@ func scanNode(row rowScanner) (Node, error) {
 	}
 	if lastValidationAt.Valid {
 		node.LastValidationAt = &lastValidationAt.Time
+	}
+	if len(runtimeEventsJSON) > 0 {
+		if err := json.Unmarshal(runtimeEventsJSON, &node.RuntimeEvents); err != nil {
+			return Node{}, err
+		}
+		node.RuntimeEvents = normalizeRuntimeEvents(node.RuntimeEvents)
 	}
 	if lastHealthAt.Valid {
 		node.LastHealthAt = &lastHealthAt.Time
@@ -1127,6 +1155,72 @@ func normalizeRuntimeProcessState(value string) string {
 	default:
 		return "disabled"
 	}
+}
+
+func normalizeRuntimeEvents(events []RuntimeEvent) []RuntimeEvent {
+	if len(events) == 0 {
+		return []RuntimeEvent{}
+	}
+	if len(events) > runtimeEventsLimit {
+		events = events[len(events)-runtimeEventsLimit:]
+	}
+	normalized := make([]RuntimeEvent, 0, len(events))
+	for _, event := range events {
+		event.Type = normalizeRuntimeEventType(event.Type)
+		event.Status = normalizeRuntimeEventStatus(event.Status)
+		event.Message = compactRuntimeEventMessage(event.Message)
+		event.RuntimeMode = normalizeRuntimeMode(event.RuntimeMode)
+		event.RuntimeProcessMode = normalizeRuntimeProcessMode(event.RuntimeProcessMode)
+		event.RuntimeProcessState = normalizeRuntimeProcessState(event.RuntimeProcessState)
+		if event.At.IsZero() {
+			event.At = time.Now().UTC()
+		} else {
+			event.At = event.At.UTC()
+		}
+		if event.RevisionNumber < 0 {
+			event.RevisionNumber = 0
+		}
+		normalized = append(normalized, event)
+	}
+	return normalized
+}
+
+func runtimeEventsJSON(events []RuntimeEvent) []byte {
+	body, err := json.Marshal(normalizeRuntimeEvents(events))
+	if err != nil {
+		return []byte("[]")
+	}
+	return body
+}
+
+func normalizeRuntimeEventType(value string) string {
+	switch strings.TrimSpace(value) {
+	case "apply_success", "apply_failure", "validation_failure", "dry_run_failure", "process_prepare_start_intent":
+		return strings.TrimSpace(value)
+	default:
+		return "runtime_event"
+	}
+}
+
+func normalizeRuntimeEventStatus(value string) string {
+	switch strings.TrimSpace(value) {
+	case "applied":
+		return "applied"
+	case "failed":
+		return "failed"
+	case "ready":
+		return "ready"
+	default:
+		return ""
+	}
+}
+
+func compactRuntimeEventMessage(value string) string {
+	message := strings.TrimSpace(value)
+	if len(message) > 240 {
+		message = strings.TrimSpace(message[:240])
+	}
+	return message
 }
 
 func normalizeRuntimeDesiredState(value string) string {
@@ -1243,7 +1337,7 @@ func (r *nodesRepository) transition(ctx context.Context, id string, decide func
 	defer tx.Rollback()
 
 	node, err := scanNode(tx.QueryRowContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, runtime_events, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		WHERE id = $1
 		FOR UPDATE
@@ -1272,7 +1366,7 @@ func (r *nodesRepository) transition(ctx context.Context, id string, decide func
 		    drain_state = $3,
 		    updated_at = now()
 		WHERE id = $1
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_process_mode, runtime_process_state, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, runtime_events, last_health_at, last_seen_at, registered_at, updated_at
 	`, id, next.Status, next.DrainState))
 	if err != nil {
 		return Node{}, err

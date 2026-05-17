@@ -182,7 +182,8 @@ with a concise `error_message` such as
 
 The agent also exposes the latest runtime readiness metadata in `/status` and
 heartbeat/report payloads: `last_validation_status`, `last_validation_error`,
-`last_validation_at`, `last_applied_revision`, and `active_config_path`.
+`last_validation_at`, `last_applied_revision`, `active_config_path`, and the
+bounded `runtime_events` trail.
 For a successful real-binary dry-run apply, expected signals are
 `xray_dry_run_enabled=true`, `last_validation_status=applied`, an empty
 `last_validation_error`, a non-zero `last_applied_revision`, and an
@@ -229,7 +230,8 @@ intended for development/operator inspection, not as a full audit system.
 Current event types cover apply success, apply failure, validation failure,
 Xray dry-run failure, and the local process prepare/start intent in
 `LENKER_AGENT_RUNTIME_PROCESS_MODE=local`. The trail is stored in local
-`state.json`; it is not sent to panel-api yet.
+`state.json` and is sent with heartbeat/report payloads so panel-api can retain
+a bounded recent node-level trail.
 
 Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 

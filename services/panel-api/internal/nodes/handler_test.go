@@ -424,7 +424,17 @@ func TestHeartbeatSuccess(t *testing.T) {
 		"last_validation_status": "applied",
 		"last_validation_at": "2026-05-16T01:02:03Z",
 		"last_applied_revision": 7,
-		"active_config_path": "/var/lib/lenker/node-agent/active/config.json"
+		"active_config_path": "/var/lib/lenker/node-agent/active/config.json",
+		"runtime_events": [{
+			"type": "apply_success",
+			"status": "applied",
+			"revision_number": 7,
+			"message": "revision applied",
+			"runtime_mode": "dry-run-only",
+			"runtime_process_mode": "disabled",
+			"runtime_process_state": "disabled",
+			"at": "2026-05-16T01:02:03Z"
+		}]
 	}`))
 	request.SetPathValue("id", "node-1")
 	request.Header.Set("Authorization", "Bearer node-token")
@@ -444,11 +454,17 @@ func TestHeartbeatSuccess(t *testing.T) {
 	if repo.heartbeat.RuntimeMode != "dry-run-only" || repo.heartbeat.RuntimeState != "active_config_ready" || repo.heartbeat.LastDryRunStatus != "passed" {
 		t.Fatalf("expected runtime supervisor heartbeat input: %#v", repo.heartbeat)
 	}
+	if len(repo.heartbeat.RuntimeEvents) != 1 || repo.heartbeat.RuntimeEvents[0].Type != "apply_success" {
+		t.Fatalf("expected runtime event heartbeat input: %#v", repo.heartbeat.RuntimeEvents)
+	}
 	if !strings.Contains(response.Body.String(), `"last_validation_status":"applied"`) {
 		t.Fatalf("expected runtime metadata in heartbeat response: %s", response.Body.String())
 	}
 	if !strings.Contains(response.Body.String(), `"runtime_state":"active_config_ready"`) {
 		t.Fatalf("expected runtime supervisor metadata in heartbeat response: %s", response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"runtime_events":[`) {
+		t.Fatalf("expected runtime events in heartbeat response: %s", response.Body.String())
 	}
 }
 
@@ -609,7 +625,14 @@ func TestReportConfigRevisionApplied(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/node-1/config-revisions/revision-1/report", strings.NewReader(`{
 		"status": "applied",
 		"applied_at": "`+appliedAt+`",
-		"active_revision": 4
+		"active_revision": 4,
+		"runtime_events": [{
+			"type": "apply_success",
+			"status": "applied",
+			"revision_number": 4,
+			"message": "revision applied",
+			"at": "2026-05-16T01:02:03Z"
+		}]
 	}`))
 	request.SetPathValue("id", "node-1")
 	request.SetPathValue("revisionId", "revision-1")
@@ -629,6 +652,9 @@ func TestReportConfigRevisionApplied(t *testing.T) {
 	}
 	if !repo.reportedRevisionInput.RuntimeMetadataPresent || repo.reportedRevisionInput.LastValidationStatus != "applied" {
 		t.Fatalf("expected applied runtime metadata report input: %#v", repo.reportedRevisionInput)
+	}
+	if len(repo.reportedRevisionInput.RuntimeEvents) != 1 || repo.reportedRevisionInput.RuntimeEvents[0].Type != "apply_success" {
+		t.Fatalf("expected applied runtime event report input: %#v", repo.reportedRevisionInput.RuntimeEvents)
 	}
 	if !strings.Contains(response.Body.String(), `"status":"applied"`) {
 		t.Fatalf("expected revision response: %s", response.Body.String())
@@ -841,6 +867,7 @@ func (r *fakeNodesRepository) RecordHeartbeat(ctx context.Context, input storage
 		LastValidationAt:     &now,
 		LastAppliedRevision:  input.LastAppliedRevision,
 		ActiveConfigPath:     input.ActiveConfigPath,
+		RuntimeEvents:        input.RuntimeEvents,
 		LastHealthAt:         &now,
 	}, nil
 }
