@@ -492,6 +492,62 @@ client-read result, rotate/revoke checks, and redaction status. The summary
 intentionally does not print the plaintext handoff token or access token; tokens
 remain visible only inside the helper for scripted API calls.
 
+### Provider Release Readiness Checklist
+
+Use this compact checklist before a provider-side demo or release marker. It
+confirms the runtime/config apply path and the handoff/bootstrap/access path;
+it does not validate client-app, marketplace, billing, deeplinks, or real Xray
+process supervision.
+
+Prerequisites:
+
+- Docker daemon is available;
+- local images are current; run `make docker-build` after backend or agent
+  changes;
+- local admin bootstrap credentials match `ADMIN_EMAIL` and `ADMIN_PASSWORD`,
+  or those env vars are exported for the smoke helpers;
+- optional Xray binary dry-run remains opt-in; the default checklist works
+  without `LENKER_AGENT_XRAY_BIN`.
+
+Run, in order:
+
+1. `make docker-runtime-smoke`
+   - node bootstrap/register succeeds;
+   - config revision is fetched, validated, staged, activated, and reported as
+     `applied`;
+   - active config artifacts exist;
+   - node detail exposes runtime readiness and persisted `runtime_events`.
+2. `make docker-runtime-failure-smoke`
+   - baseline active config remains intact;
+   - forced dry-run failure reports `failed`;
+   - runtime readiness moves to `validation_failed`;
+   - persisted `runtime_events` include the failure signal.
+3. `make docker-handoff-smoke`
+   - subscription access export matches the applied node/config payload;
+   - handoff invite is issued and claimed exactly once;
+   - resulting access token can read the redacted client access payload;
+   - repeated claim, rotated old token, and revoked token are rejected;
+   - final summary is redacted and does not print plaintext tokens.
+
+Panel/API visibility checks:
+
+- Nodes detail in panel-web shows runtime readiness and recent runtime events
+  for the smoke node.
+- Subscriptions access block shows selected node, endpoint, protocol path,
+  VLESS URI, access token status, and handoff invite status.
+- Admin node/subscription API responses match the statuses shown in panel-web.
+- Smoke summaries show sane subscription, node, endpoint, protocol, applied
+  revision, and lifecycle values.
+
+Release blockers:
+
+- runtime revision never becomes `applied`;
+- failure smoke changes the previous active revision or active artifact;
+- runtime readiness fields or `runtime_events` are missing after apply/failure;
+- handoff claim succeeds more than once;
+- rotated old token or revoked token still reads access;
+- smoke summary prints plaintext handoff or access token material.
+
 ### Provider Handoff Operator Runbook
 
 Goal:
