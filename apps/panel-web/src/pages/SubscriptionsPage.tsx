@@ -1,20 +1,25 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  createSubscriptionHandoffInvite,
   createSubscriptionAccessToken,
   createSubscription,
   getSubscriptionAccess,
+  getSubscriptionHandoffInviteStatus,
   getSubscriptionAccessTokenStatus,
   listPlans,
   listSubscriptions,
   listUsers,
   PanelApiError,
   renewSubscription,
+  revokeSubscriptionHandoffInvite,
   revokeSubscriptionAccessToken,
   rotateSubscriptionAccessToken,
   updateSubscription,
   type Plan,
   type Subscription,
   type SubscriptionAccess,
+  type SubscriptionHandoffInvite,
+  type SubscriptionHandoffInviteStatus,
   type SubscriptionAccessToken,
   type SubscriptionAccessTokenStatus,
   type User,
@@ -57,7 +62,10 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
   const [subscriptionAccess, setSubscriptionAccess] = useState<SubscriptionAccess | null>(null);
   const [accessTokenResult, setAccessTokenResult] = useState<SubscriptionAccessToken | null>(null);
   const [accessTokenStatus, setAccessTokenStatus] = useState<SubscriptionAccessTokenStatus | null>(null);
+  const [handoffInviteResult, setHandoffInviteResult] = useState<SubscriptionHandoffInvite | null>(null);
+  const [handoffInviteStatus, setHandoffInviteStatus] = useState<SubscriptionHandoffInviteStatus | null>(null);
   const [tokenAction, setTokenAction] = useState<"issue" | "rotate" | "revoke" | null>(null);
+  const [handoffAction, setHandoffAction] = useState<"issue" | "revoke" | null>(null);
 
   const activeSubscriptions = useMemo(
     () => subscriptions.filter((subscription) => subscription.status === "active").length,
@@ -148,13 +156,16 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
     setSuccessMessage(null);
 
     try {
-      const [access, tokenStatus] = await Promise.all([
+      const [access, tokenStatus, handoffStatus] = await Promise.all([
         getSubscriptionAccess(session, subscription.id),
         getSubscriptionAccessTokenStatus(session, subscription.id),
+        getSubscriptionHandoffInviteStatus(session, subscription.id),
       ]);
       setSubscriptionAccess(access);
       setAccessTokenResult(null);
       setAccessTokenStatus(tokenStatus);
+      setHandoffInviteResult(null);
+      setHandoffInviteStatus(handoffStatus);
       setSuccessMessage("Subscription access export loaded.");
     } catch (error) {
       if (handleUnauthorizedError(error, onUnauthorized)) {
@@ -236,6 +247,54 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
       setErrorMessage(formatPanelError(error, "Unable to revoke subscription access token."));
     } finally {
       setTokenAction(null);
+    }
+  }
+
+  async function issueHandoffInvite() {
+    if (!subscriptionAccess) {
+      return;
+    }
+
+    setHandoffAction("issue");
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const invite = await createSubscriptionHandoffInvite(session, subscriptionAccess.subscription_id);
+      setHandoffInviteResult(invite);
+      setHandoffInviteStatus((currentStatus) => handoffStatusFromInvite(invite, currentStatus?.generation));
+      setSuccessMessage("Client handoff invite issued.");
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setErrorMessage(formatPanelError(error, "Unable to issue client handoff invite."));
+    } finally {
+      setHandoffAction(null);
+    }
+  }
+
+  async function revokeHandoffInvite() {
+    if (!subscriptionAccess) {
+      return;
+    }
+
+    setHandoffAction("revoke");
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const inviteStatus = await revokeSubscriptionHandoffInvite(session, subscriptionAccess.subscription_id);
+      setHandoffInviteResult(null);
+      setHandoffInviteStatus(inviteStatus);
+      setSuccessMessage("Client handoff invite revoked.");
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setErrorMessage(formatPanelError(error, "Unable to revoke client handoff invite."));
+    } finally {
+      setHandoffAction(null);
     }
   }
 
@@ -670,6 +729,69 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
           ) : (
             <p className="state-text">No plaintext access token is currently shown.</p>
           )}
+          <div className="section-heading compact-heading">
+            <div>
+              <p className="eyebrow">Client handoff</p>
+              <h4>Bootstrap invite</h4>
+            </div>
+            <div className="row-actions">
+              <button className="table-button" type="button" onClick={issueHandoffInvite} disabled={handoffAction !== null}>
+                {handoffAction === "issue" ? "Issuing..." : "Issue invite"}
+              </button>
+              <button className="table-button danger" type="button" onClick={revokeHandoffInvite} disabled={handoffAction !== null}>
+                {handoffAction === "revoke" ? "Revoking..." : "Revoke invite"}
+              </button>
+            </div>
+          </div>
+          {handoffInviteStatus ? (
+            <>
+              <dl className="node-detail-grid">
+                <div>
+                  <dt>status</dt>
+                  <dd>{formatHandoffInviteStatus(handoffInviteStatus)}</dd>
+                </div>
+                <div>
+                  <dt>generation</dt>
+                  <dd>{handoffInviteStatus.generation || "-"}</dd>
+                </div>
+                <div>
+                  <dt>issued</dt>
+                  <dd>{handoffInviteStatus.issued_at ? formatDate(handoffInviteStatus.issued_at) : "never issued"}</dd>
+                </div>
+                <div>
+                  <dt>expires</dt>
+                  <dd>{handoffInviteStatus.expires_at ? formatDate(handoffInviteStatus.expires_at) : "-"}</dd>
+                </div>
+                <div>
+                  <dt>claimed</dt>
+                  <dd>{handoffInviteStatus.claimed_at ? formatDate(handoffInviteStatus.claimed_at) : "-"}</dd>
+                </div>
+                <div>
+                  <dt>revoked</dt>
+                  <dd>{handoffInviteStatus.revoked_at ? formatDate(handoffInviteStatus.revoked_at) : "-"}</dd>
+                </div>
+              </dl>
+              <p className="state-text">{handoffInviteStatusHint(handoffInviteStatus)}</p>
+            </>
+          ) : (
+            <p className="state-text">Client handoff invite status is not loaded.</p>
+          )}
+          {handoffInviteResult ? (
+            <>
+              <label className="field-label" htmlFor="subscription-handoff-token">
+                Plaintext handoff invite token
+              </label>
+              <textarea
+                id="subscription-handoff-token"
+                className="readonly-textarea"
+                value={handoffInviteResult.handoff_token}
+                readOnly
+                rows={3}
+              />
+            </>
+          ) : (
+            <p className="state-text">No plaintext handoff invite token is currently shown.</p>
+          )}
         </section>
       ) : null}
     </div>
@@ -716,12 +838,51 @@ function accessTokenStatusHint(status: SubscriptionAccessTokenStatus): string {
   return "The current client access token can read the redacted subscription access payload.";
 }
 
+function formatHandoffInviteStatus(status: SubscriptionHandoffInviteStatus): string {
+  if (!status.issued || status.status === "never_issued") {
+    return "never issued";
+  }
+  return status.status;
+}
+
+function handoffInviteStatusHint(status: SubscriptionHandoffInviteStatus): string {
+  if (!status.issued || status.status === "never_issued") {
+    return "No client handoff invite has been issued yet.";
+  }
+  if (status.status === "active") {
+    return "The current invite can be claimed once to bootstrap a client access token.";
+  }
+  if (status.status === "claimed") {
+    return "The latest invite has already been claimed and cannot be reused.";
+  }
+  if (status.status === "expired") {
+    return "The latest invite expired before it was claimed.";
+  }
+  return "The latest invite is revoked; client bootstrap claims will be rejected.";
+}
+
 function tokenStatusFromToken(token: SubscriptionAccessToken, previousGeneration = 0): SubscriptionAccessTokenStatus {
   return {
     subscription_id: token.subscription_id,
     status: "active",
     issued: true,
     issued_at: token.created_at,
+    revoked_at: null,
+    generation: Math.max(previousGeneration + 1, 1),
+  };
+}
+
+function handoffStatusFromInvite(
+  invite: SubscriptionHandoffInvite,
+  previousGeneration = 0,
+): SubscriptionHandoffInviteStatus {
+  return {
+    subscription_id: invite.subscription_id,
+    status: "active",
+    issued: true,
+    issued_at: invite.created_at,
+    expires_at: invite.expires_at,
+    claimed_at: null,
     revoked_at: null,
     generation: Math.max(previousGeneration + 1, 1),
   };

@@ -231,6 +231,16 @@ consumer calls never use the admin session token. This does not implement full
 end-user app authentication, deeplink delivery, device binding, marketplace
 provider discovery, billing, or multi-protocol delivery.
 
+The next bootstrap layer adds a one-time subscription handoff invite. A provider
+admin can issue a short-lived plaintext `handoff_token` once for an active
+subscription; panel-api stores only its hash. A consumer can claim that invite
+through `POST /api/v1/client/handoff/claim`, which marks the invite claimed,
+creates a normal subscription access token, and returns that token plus the
+redacted access payload for the same single MVP path. This prepares a future
+`lenker-app` bootstrap path without adding user accounts, device registry,
+OAuth-like exchange flows, deeplinks, marketplace discovery, billing, or
+multi-protocol delivery.
+
 ### Boundary 4: Secrets and Persistent State
 
 - subscription secrets and node trust material must not be stored in plaintext where avoidable

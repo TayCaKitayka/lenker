@@ -301,6 +301,106 @@ func TestClientAccessRejectsInvalidToken(t *testing.T) {
 	}
 }
 
+func TestCreateHandoffInviteSuccess(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/subscriptions/sub-1/handoff-invite", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.CreateHandoffInvite(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"handoff_token":"lnkhi_test-token"`) {
+		t.Fatalf("expected plaintext handoff token response, got %s", response.Body.String())
+	}
+	if repo.handoffInviteID != "sub-1" {
+		t.Fatalf("expected subscription id to reach repository, got %q", repo.handoffInviteID)
+	}
+}
+
+func TestHandoffInviteStatusOmitsTokenMaterial(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/sub-1/handoff-invite", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.HandoffInviteStatus(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"status":"active"`) {
+		t.Fatalf("expected active handoff status response, got %s", response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "handoff_token") {
+		t.Fatalf("expected status response to omit handoff token material, got %s", response.Body.String())
+	}
+}
+
+func TestRevokeHandoffInviteSuccess(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{handoffStatus: "revoked"}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/subscriptions/sub-1/handoff-invite", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.RevokeHandoffInvite(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"status":"revoked"`) {
+		t.Fatalf("expected revoked handoff status response, got %s", response.Body.String())
+	}
+}
+
+func TestClaimHandoffSuccess(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/client/handoff/claim", strings.NewReader(`{"handoff_token":"invite-token"}`))
+	response := httptest.NewRecorder()
+
+	handler.ClaimHandoff(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.claimedHandoffToken != "invite-token" {
+		t.Fatalf("expected handoff token to reach repository, got %q", repo.claimedHandoffToken)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"claim_kind":"subscription_handoff_claim.v1alpha1"`) {
+		t.Fatalf("expected claim response kind, got %s", body)
+	}
+	if !strings.Contains(body, `"access_token":"lnksa_claimed-token"`) {
+		t.Fatalf("expected claim response access token, got %s", body)
+	}
+	if strings.Contains(body, `"user_id"`) || strings.Contains(body, `"plan_id"`) {
+		t.Fatalf("expected claim access payload to omit provider-internal ids: %s", body)
+	}
+}
+
+func TestClaimHandoffRejectsInvalidToken(t *testing.T) {
+	handler := NewHandler(nil, &fakeSubscriptionsRepository{claimErr: storage.ErrInvalidSubscriptionHandoffToken}, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/client/handoff/claim", strings.NewReader(`{"handoff_token":"bad"}`))
+	response := httptest.NewRecorder()
+
+	handler.ClaimHandoff(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestRenewSubscriptionValidationError(t *testing.T) {
 	handler := NewHandler(nil, &fakeSubscriptionsRepository{}, testAdminOnly)
 
@@ -324,11 +424,17 @@ type fakeSubscriptionsRepository struct {
 	rotatedAccessTokenID string
 	revokedAccessTokenID string
 	consumerToken        string
+	handoffInviteID      string
+	handoffStatusID      string
+	revokedHandoffID     string
+	claimedHandoffToken  string
 	tokenStatus          string
+	handoffStatus        string
 	revokeCalls          int
 	createErr            error
 	accessErr            error
 	consumerErr          error
+	claimErr             error
 }
 
 func (r *fakeSubscriptionsRepository) List(ctx context.Context) ([]storage.Subscription, error) {
@@ -461,6 +567,74 @@ func (r *fakeSubscriptionsRepository) AccessByToken(ctx context.Context, token s
 	return r.Access(ctx, "sub-1")
 }
 
+func (r *fakeSubscriptionsRepository) CreateHandoffInvite(ctx context.Context, id string) (storage.SubscriptionHandoffInvite, error) {
+	r.handoffInviteID = id
+	if r.accessErr != nil {
+		return storage.SubscriptionHandoffInvite{}, r.accessErr
+	}
+	now := time.Now().UTC()
+	return storage.SubscriptionHandoffInvite{
+		SubscriptionID: id,
+		HandoffToken:   "lnkhi_test-token",
+		ExpiresAt:      now.Add(24 * time.Hour),
+		CreatedAt:      now,
+	}, nil
+}
+
+func (r *fakeSubscriptionsRepository) HandoffInviteStatus(ctx context.Context, id string) (storage.SubscriptionHandoffInviteStatus, error) {
+	r.handoffStatusID = id
+	if r.accessErr != nil {
+		return storage.SubscriptionHandoffInviteStatus{}, r.accessErr
+	}
+	now := time.Now().UTC()
+	switch r.handoffStatus {
+	case "never_issued":
+		return storage.SubscriptionHandoffInviteStatus{SubscriptionID: id, Status: "never_issued", Issued: false}, nil
+	case "revoked":
+		return storage.SubscriptionHandoffInviteStatus{
+			SubscriptionID: id,
+			Status:         "revoked",
+			Issued:         true,
+			IssuedAt:       &now,
+			ExpiresAt:      ptrTime(now.Add(24 * time.Hour)),
+			RevokedAt:      &now,
+			Generation:     1,
+		}, nil
+	}
+	return storage.SubscriptionHandoffInviteStatus{
+		SubscriptionID: id,
+		Status:         "active",
+		Issued:         true,
+		IssuedAt:       &now,
+		ExpiresAt:      ptrTime(now.Add(24 * time.Hour)),
+		Generation:     1,
+	}, nil
+}
+
+func (r *fakeSubscriptionsRepository) RevokeHandoffInvite(ctx context.Context, id string) (storage.SubscriptionHandoffInviteStatus, error) {
+	r.revokedHandoffID = id
+	if r.accessErr != nil {
+		return storage.SubscriptionHandoffInviteStatus{}, r.accessErr
+	}
+	r.handoffStatus = "revoked"
+	return r.HandoffInviteStatus(ctx, id)
+}
+
+func (r *fakeSubscriptionsRepository) ClaimHandoffInvite(ctx context.Context, token string) (storage.SubscriptionHandoffClaim, error) {
+	r.claimedHandoffToken = token
+	if r.claimErr != nil {
+		return storage.SubscriptionHandoffClaim{}, r.claimErr
+	}
+	now := time.Now().UTC()
+	return storage.SubscriptionHandoffClaim{
+		SubscriptionID:       "sub-1",
+		AccessToken:          "lnksa_claimed-token",
+		AccessTokenExpiresAt: now.Add(30 * 24 * time.Hour),
+		ClaimedAt:            now,
+		Access:               mustAccess(r.Access(ctx, "sub-1")),
+	}, nil
+}
+
 func (r *fakeSubscriptionsRepository) Update(ctx context.Context, id string, input storage.UpdateSubscriptionInput) (storage.Subscription, error) {
 	return testSubscription(id), nil
 }
@@ -498,6 +672,17 @@ func testAdminOnly(next http.Handler) http.Handler {
 
 func testAdmin() admins.Admin {
 	return admins.Admin{ID: "admin-1", Email: "owner@example.com", Status: "active"}
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
+}
+
+func mustAccess(access storage.SubscriptionAccess, err error) storage.SubscriptionAccess {
+	if err != nil {
+		panic(err)
+	}
+	return access
 }
 
 func assertAudit(t *testing.T, events []audit.Event, action string, outcome string) {

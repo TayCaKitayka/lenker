@@ -514,6 +514,8 @@ Expected signals:
 - smoke summary selected node, endpoint, protocol path, and applied revision
   match the active node/config path;
 - provider status reads do not return plaintext token material.
+- optional bootstrap handoff invite claim returns a normal client access token
+  plus the same redacted access payload.
 
 Pre-release operator demo checklist:
 
@@ -525,6 +527,9 @@ Pre-release operator demo checklist:
 - issue a subscription access token and confirm token status becomes `active`;
 - read `GET /api/v1/client/subscription-access` with that Bearer token and
   confirm the redacted payload matches the provider access block;
+- issue a handoff invite, claim it with
+  `POST /api/v1/client/handoff/claim`, and confirm the invite becomes
+  `claimed`;
 - rotate the token and confirm the old token returns `401`;
 - read again with the rotated token and confirm the payload still matches;
 - revoke the token and confirm the rotated token now returns `401`;
@@ -558,6 +563,9 @@ Common operator notes:
   delivery payload;
 - this runbook does not cover client-app, deeplinks, device binding,
   marketplace delivery, billing, or end-user account auth.
+- client handoff invites are one-time bootstrap artifacts: claiming one returns
+  a normal access token for the existing client read endpoint, but does not
+  create a user account or device record.
 
 Troubleshooting failed handoff or client-read cases:
 

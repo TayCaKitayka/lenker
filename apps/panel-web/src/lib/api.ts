@@ -42,6 +42,14 @@ interface SubscriptionAccessTokenStatusResponse {
   data: SubscriptionAccessTokenStatus;
 }
 
+interface SubscriptionHandoffInviteResponse {
+  data: SubscriptionHandoffInvite;
+}
+
+interface SubscriptionHandoffInviteStatusResponse {
+  data: SubscriptionHandoffInviteStatus;
+}
+
 interface NodeListResponse {
   data?: NodeSummary[] | null;
 }
@@ -177,6 +185,24 @@ export interface SubscriptionAccessTokenStatus {
   status: "never_issued" | "active" | "revoked";
   issued: boolean;
   issued_at?: string | null;
+  revoked_at?: string | null;
+  generation: number;
+}
+
+export interface SubscriptionHandoffInvite {
+  subscription_id: string;
+  handoff_token: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface SubscriptionHandoffInviteStatus {
+  subscription_id: string;
+  status: "never_issued" | "active" | "claimed" | "revoked" | "expired";
+  issued: boolean;
+  issued_at?: string | null;
+  expires_at?: string | null;
+  claimed_at?: string | null;
   revoked_at?: string | null;
   generation: number;
 }
@@ -484,6 +510,41 @@ export async function revokeSubscriptionAccessToken(
   const payload = await authorizedRequest<SubscriptionAccessTokenStatusResponse>(
     session,
     `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/access-token`,
+    { method: "DELETE" },
+  );
+  return payload.data;
+}
+
+export async function getSubscriptionHandoffInviteStatus(
+  session: StoredSession,
+  subscriptionID: string,
+): Promise<SubscriptionHandoffInviteStatus> {
+  const payload = await authorizedRequest<SubscriptionHandoffInviteStatusResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/handoff-invite`,
+  );
+  return payload.data;
+}
+
+export async function createSubscriptionHandoffInvite(
+  session: StoredSession,
+  subscriptionID: string,
+): Promise<SubscriptionHandoffInvite> {
+  const payload = await authorizedRequest<SubscriptionHandoffInviteResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/handoff-invite`,
+    { method: "POST" },
+  );
+  return payload.data;
+}
+
+export async function revokeSubscriptionHandoffInvite(
+  session: StoredSession,
+  subscriptionID: string,
+): Promise<SubscriptionHandoffInviteStatus> {
+  const payload = await authorizedRequest<SubscriptionHandoffInviteStatusResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/handoff-invite`,
     { method: "DELETE" },
   );
   return payload.data;

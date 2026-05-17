@@ -464,6 +464,66 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/subscriptions/{id}/handoff-invite:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Subscriptions]
+      summary: Get subscription handoff invite lifecycle status
+      description: Returns provider-side lifecycle metadata for the latest client handoff invite without returning plaintext invite token material.
+      responses:
+        "200":
+          description: Subscription handoff invite lifecycle status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionHandoffInviteStatusEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Subscriptions]
+      summary: Issue a client handoff invite
+      description: Issues a short-lived one-time handoff invite for the active subscription. Any previous active invite for the subscription is revoked before the new plaintext invite token is returned once.
+      responses:
+        "201":
+          description: Plaintext handoff invite token created. The database stores only a token hash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionHandoffInviteEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Handoff invite cannot be created for this subscription state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Subscriptions]
+      summary: Revoke the active client handoff invite
+      description: Revokes the current active handoff invite without returning token material. Already claimed, expired, revoked, or never-issued invites remain non-claimable.
+      responses:
+        "200":
+          description: Active handoff invite revoked or already absent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionHandoffInviteStatusEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/subscriptions/{id}/renew:
     parameters:
       - $ref: "#/components/parameters/ID"
@@ -489,6 +549,37 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/client/handoff/claim:
+    post:
+      tags: [Subscriptions]
+      summary: Claim a client handoff invite
+      description: Consumer-facing bootstrap boundary for the current single MVP path. The one-time handoff token is exchanged for a subscription access token plus the redacted access payload. It does not use admin session auth and does not create a full user account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientHandoffClaimRequest"
+      responses:
+        "200":
+          description: Handoff invite claimed and client access bootstrap payload returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientHandoffClaimEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Subscription access export is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/v1/client/subscription-access:
@@ -1375,6 +1466,78 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/SubscriptionAccessTokenStatus"
+    SubscriptionHandoffInvite:
+      type: object
+      description: Plaintext one-time client handoff invite returned only by issue responses.
+      required: [subscription_id, handoff_token, expires_at, created_at]
+      properties:
+        subscription_id:
+          type: string
+          example: "sub_123"
+        handoff_token:
+          type: string
+          description: Plaintext handoff invite token returned only by the create-invite response.
+          example: "lnkhi_example_plaintext_invite"
+        expires_at:
+          type: string
+          format: date-time
+          example: "2026-05-18T12:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-05-17T12:00:00Z"
+    SubscriptionHandoffInviteEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SubscriptionHandoffInvite"
+    SubscriptionHandoffInviteStatus:
+      type: object
+      description: Provider-side handoff invite lifecycle status. It never includes plaintext invite token material.
+      required: [subscription_id, status, issued, generation]
+      properties:
+        subscription_id:
+          type: string
+          example: "sub_123"
+        status:
+          type: string
+          enum: [never_issued, active, claimed, revoked, expired]
+          example: active
+        issued:
+          type: boolean
+          example: true
+        issued_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-05-17T12:00:00Z"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-05-18T12:00:00Z"
+        claimed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        generation:
+          type: integer
+          example: 1
+    SubscriptionHandoffInviteStatusEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SubscriptionHandoffInviteStatus"
     ClientSubscriptionAccess:
       type: object
       required:
@@ -1434,6 +1597,47 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/ClientSubscriptionAccess"
+    ClientHandoffClaimRequest:
+      type: object
+      required: [handoff_token]
+      properties:
+        handoff_token:
+          type: string
+          example: "lnkhi_example_plaintext_invite"
+    ClientHandoffClaim:
+      type: object
+      required:
+        - claim_kind
+        - subscription_id
+        - access_token
+        - access_token_expires_at
+        - claimed_at
+        - access
+      properties:
+        claim_kind:
+          type: string
+          enum: [subscription_handoff_claim.v1alpha1]
+        subscription_id:
+          type: string
+        access_token:
+          type: string
+          description: Plaintext subscription access token returned to the consumer after a successful one-time handoff claim.
+          example: "lnksa_example_plaintext_token"
+        access_token_expires_at:
+          type: string
+          format: date-time
+        claimed_at:
+          type: string
+          format: date-time
+        access:
+          $ref: "#/components/schemas/ClientSubscriptionAccess"
+    ClientHandoffClaimEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/ClientHandoffClaim"
     CreateSubscriptionRequest:
       type: object
       required: [user_id, plan_id]

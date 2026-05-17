@@ -42,7 +42,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/subscriptions/{id}/access-token", h.adminOnly(http.HandlerFunc(h.CreateAccessToken)))
 	mux.Handle("DELETE /api/v1/subscriptions/{id}/access-token", h.adminOnly(http.HandlerFunc(h.RevokeAccessToken)))
 	mux.Handle("POST /api/v1/subscriptions/{id}/access-token/rotate", h.adminOnly(http.HandlerFunc(h.RotateAccessToken)))
+	mux.Handle("GET /api/v1/subscriptions/{id}/handoff-invite", h.adminOnly(http.HandlerFunc(h.HandoffInviteStatus)))
+	mux.Handle("POST /api/v1/subscriptions/{id}/handoff-invite", h.adminOnly(http.HandlerFunc(h.CreateHandoffInvite)))
+	mux.Handle("DELETE /api/v1/subscriptions/{id}/handoff-invite", h.adminOnly(http.HandlerFunc(h.RevokeHandoffInvite)))
 	mux.HandleFunc("GET /api/v1/client/subscription-access", h.ClientAccess)
+	mux.HandleFunc("POST /api/v1/client/handoff/claim", h.ClaimHandoff)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +153,33 @@ func (h *Handler) RevokeAccessToken(w http.ResponseWriter, r *http.Request) {
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: status})
 }
 
+func (h *Handler) CreateHandoffInvite(w http.ResponseWriter, r *http.Request) {
+	invite, err := h.subscriptions.CreateHandoffInvite(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusCreated, httpapi.Response{Data: invite})
+}
+
+func (h *Handler) HandoffInviteStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.subscriptions.HandoffInviteStatus(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: status})
+}
+
+func (h *Handler) RevokeHandoffInvite(w http.ResponseWriter, r *http.Request) {
+	status, err := h.subscriptions.RevokeHandoffInvite(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: status})
+}
+
 func (h *Handler) ClientAccess(w http.ResponseWriter, r *http.Request) {
 	token, ok := bearerToken(r.Header.Get("Authorization"))
 	if !ok {
@@ -166,6 +197,31 @@ func (h *Handler) ClientAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: clientAccessResponse(access)})
+}
+
+func (h *Handler) ClaimHandoff(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		HandoffToken string `json:"handoff_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		httpapi.WriteBadRequest(w, "invalid JSON request body")
+		return
+	}
+	if strings.TrimSpace(request.HandoffToken) == "" {
+		httpapi.WriteBadRequest(w, "handoff_token is required")
+		return
+	}
+
+	claim, err := h.subscriptions.ClaimHandoffInvite(r.Context(), request.HandoffToken)
+	if err != nil {
+		if errors.Is(err, storage.ErrInvalidSubscriptionHandoffToken) {
+			httpapi.WriteError(w, http.StatusUnauthorized, "unauthorized", "subscription handoff token is missing, invalid, expired, revoked, or already claimed")
+			return
+		}
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: clientHandoffClaimResponse(claim)})
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -312,5 +368,16 @@ func clientAccessResponse(access storage.SubscriptionAccess) map[string]any {
 		},
 		"display_name": access.DisplayName,
 		"uri":          access.URI,
+	}
+}
+
+func clientHandoffClaimResponse(claim storage.SubscriptionHandoffClaim) map[string]any {
+	return map[string]any{
+		"claim_kind":              "subscription_handoff_claim.v1alpha1",
+		"subscription_id":         claim.SubscriptionID,
+		"access_token":            claim.AccessToken,
+		"access_token_expires_at": claim.AccessTokenExpiresAt,
+		"claimed_at":              claim.ClaimedAt,
+		"access":                  clientAccessResponse(claim.Access),
 	}
 }

@@ -61,6 +61,32 @@ type SubscriptionAccessTokenStatus struct {
 	Generation     int        `json:"generation"`
 }
 
+type SubscriptionHandoffInvite struct {
+	SubscriptionID string    `json:"subscription_id"`
+	HandoffToken   string    `json:"handoff_token,omitempty"`
+	ExpiresAt      time.Time `json:"expires_at"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type SubscriptionHandoffInviteStatus struct {
+	SubscriptionID string     `json:"subscription_id"`
+	Status         string     `json:"status"`
+	Issued         bool       `json:"issued"`
+	IssuedAt       *time.Time `json:"issued_at,omitempty"`
+	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+	ClaimedAt      *time.Time `json:"claimed_at,omitempty"`
+	RevokedAt      *time.Time `json:"revoked_at,omitempty"`
+	Generation     int        `json:"generation"`
+}
+
+type SubscriptionHandoffClaim struct {
+	SubscriptionID       string             `json:"subscription_id"`
+	AccessToken          string             `json:"access_token"`
+	AccessTokenExpiresAt time.Time          `json:"access_token_expires_at"`
+	ClaimedAt            time.Time          `json:"claimed_at"`
+	Access               SubscriptionAccess `json:"access"`
+}
+
 type SubscriptionAccessNode struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
@@ -117,13 +143,18 @@ type SubscriptionsRepository interface {
 	RotateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error)
 	RevokeAccessToken(ctx context.Context, id string) (SubscriptionAccessTokenStatus, error)
 	AccessByToken(ctx context.Context, token string) (SubscriptionAccess, error)
+	CreateHandoffInvite(ctx context.Context, id string) (SubscriptionHandoffInvite, error)
+	HandoffInviteStatus(ctx context.Context, id string) (SubscriptionHandoffInviteStatus, error)
+	RevokeHandoffInvite(ctx context.Context, id string) (SubscriptionHandoffInviteStatus, error)
+	ClaimHandoffInvite(ctx context.Context, token string) (SubscriptionHandoffClaim, error)
 	Update(ctx context.Context, id string, input UpdateSubscriptionInput) (Subscription, error)
 	Renew(ctx context.Context, id string, extendDays int) (Subscription, error)
 }
 
 var (
-	ErrSubscriptionAccessUnavailable  = errors.New("subscription access unavailable")
-	ErrInvalidSubscriptionAccessToken = errors.New("invalid subscription access token")
+	ErrSubscriptionAccessUnavailable   = errors.New("subscription access unavailable")
+	ErrInvalidSubscriptionAccessToken  = errors.New("invalid subscription access token")
+	ErrInvalidSubscriptionHandoffToken = errors.New("invalid subscription handoff token")
 )
 
 type subscriptionsRepository struct {
@@ -492,6 +523,18 @@ func (r *subscriptionsRepository) replaceAccessToken(ctx context.Context, id str
 		return SubscriptionAccessToken{}, err
 	}
 
+	result, err := replaceAccessTokenInTx(ctx, tx, id, token)
+	if err != nil {
+		return SubscriptionAccessToken{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SubscriptionAccessToken{}, err
+	}
+	result.Token = token
+	return result, nil
+}
+
+func replaceAccessTokenInTx(ctx context.Context, tx *sql.Tx, id string, token string) (SubscriptionAccessToken, error) {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE subscription_access_tokens
 		SET status = 'revoked',
@@ -503,7 +546,7 @@ func (r *subscriptionsRepository) replaceAccessToken(ctx context.Context, id str
 	}
 
 	var result SubscriptionAccessToken
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		INSERT INTO subscription_access_tokens (subscription_id, token_hash, expires_at, status)
 		SELECT id, $2, expires_at, 'active'
 		FROM subscriptions
@@ -517,10 +560,6 @@ func (r *subscriptionsRepository) replaceAccessToken(ctx context.Context, id str
 	if err != nil {
 		return SubscriptionAccessToken{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return SubscriptionAccessToken{}, err
-	}
-	result.Token = token
 	return result, nil
 }
 
@@ -564,6 +603,224 @@ func (r *subscriptionsRepository) AccessByToken(ctx context.Context, token strin
 		return SubscriptionAccess{}, err
 	}
 	return r.Access(ctx, subscriptionID)
+}
+
+func (r *subscriptionsRepository) CreateHandoffInvite(ctx context.Context, id string) (SubscriptionHandoffInvite, error) {
+	token, err := newSubscriptionHandoffToken()
+	if err != nil {
+		return SubscriptionHandoffInvite{}, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SubscriptionHandoffInvite{}, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if err := ensureSubscriptionEligibleForAccessToken(ctx, tx, id); err != nil {
+		return SubscriptionHandoffInvite{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE subscription_handoff_invites
+		SET status = 'revoked',
+		    updated_at = now()
+		WHERE subscription_id = $1
+		  AND status = 'active'
+	`, id); err != nil {
+		return SubscriptionHandoffInvite{}, err
+	}
+
+	var invite SubscriptionHandoffInvite
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO subscription_handoff_invites (subscription_id, token_hash, expires_at, status)
+		SELECT id, $2, LEAST(expires_at, now() + INTERVAL '24 hours'), 'active'
+		FROM subscriptions
+		WHERE id = $1
+		RETURNING subscription_id::text, expires_at, created_at
+	`, id, HashSubscriptionHandoffToken(token)).Scan(
+		&invite.SubscriptionID,
+		&invite.ExpiresAt,
+		&invite.CreatedAt,
+	)
+	if err != nil {
+		return SubscriptionHandoffInvite{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SubscriptionHandoffInvite{}, err
+	}
+	invite.HandoffToken = token
+	return invite, nil
+}
+
+func (r *subscriptionsRepository) HandoffInviteStatus(ctx context.Context, id string) (SubscriptionHandoffInviteStatus, error) {
+	if _, err := r.FindByID(ctx, id); err != nil {
+		return SubscriptionHandoffInviteStatus{}, err
+	}
+
+	var row struct {
+		status     sql.NullString
+		createdAt  sql.NullTime
+		expiresAt  sql.NullTime
+		claimedAt  sql.NullTime
+		updatedAt  sql.NullTime
+		generation int
+	}
+	err := r.db.QueryRowContext(ctx, `
+		WITH invite_counts AS (
+			SELECT COUNT(*)::int AS generation
+			FROM subscription_handoff_invites
+			WHERE subscription_id = $1
+		),
+		current_invite AS (
+			SELECT status, created_at, expires_at, claimed_at, updated_at
+			FROM subscription_handoff_invites
+			WHERE subscription_id = $1
+			ORDER BY CASE WHEN status = 'active' AND expires_at > now() THEN 0 ELSE 1 END,
+			         created_at DESC
+			LIMIT 1
+		)
+		SELECT current_invite.status,
+		       current_invite.created_at,
+		       current_invite.expires_at,
+		       current_invite.claimed_at,
+		       current_invite.updated_at,
+		       invite_counts.generation
+		FROM invite_counts
+		LEFT JOIN current_invite ON true
+	`, id).Scan(&row.status, &row.createdAt, &row.expiresAt, &row.claimedAt, &row.updatedAt, &row.generation)
+	if err != nil {
+		return SubscriptionHandoffInviteStatus{}, err
+	}
+
+	status := SubscriptionHandoffInviteStatus{
+		SubscriptionID: id,
+		Status:         "never_issued",
+		Generation:     row.generation,
+	}
+	if !row.status.Valid {
+		return status, nil
+	}
+
+	status.Issued = true
+	status.Status = row.status.String
+	if row.status.String == "active" && row.expiresAt.Valid && !row.expiresAt.Time.After(time.Now().UTC()) {
+		status.Status = "expired"
+	}
+	if row.createdAt.Valid {
+		issuedAt := row.createdAt.Time
+		status.IssuedAt = &issuedAt
+	}
+	if row.expiresAt.Valid {
+		expiresAt := row.expiresAt.Time
+		status.ExpiresAt = &expiresAt
+	}
+	if row.claimedAt.Valid {
+		claimedAt := row.claimedAt.Time
+		status.ClaimedAt = &claimedAt
+	}
+	if row.status.String == "revoked" && row.updatedAt.Valid {
+		revokedAt := row.updatedAt.Time
+		status.RevokedAt = &revokedAt
+	}
+	return status, nil
+}
+
+func (r *subscriptionsRepository) RevokeHandoffInvite(ctx context.Context, id string) (SubscriptionHandoffInviteStatus, error) {
+	if _, err := r.FindByID(ctx, id); err != nil {
+		return SubscriptionHandoffInviteStatus{}, err
+	}
+
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE subscription_handoff_invites
+		SET status = 'revoked',
+		    updated_at = now()
+		WHERE subscription_id = $1
+		  AND status = 'active'
+	`, id); err != nil {
+		return SubscriptionHandoffInviteStatus{}, err
+	}
+	return r.HandoffInviteStatus(ctx, id)
+}
+
+func (r *subscriptionsRepository) ClaimHandoffInvite(ctx context.Context, token string) (SubscriptionHandoffClaim, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return SubscriptionHandoffClaim{}, ErrInvalidSubscriptionHandoffToken
+	}
+
+	accessToken, err := newSubscriptionAccessToken()
+	if err != nil {
+		return SubscriptionHandoffClaim{}, err
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SubscriptionHandoffClaim{}, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var inviteID string
+	var subscriptionID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT id::text, subscription_id::text
+		FROM subscription_handoff_invites
+		WHERE token_hash = $1
+		  AND status = 'active'
+		  AND expires_at > now()
+		ORDER BY created_at DESC
+		LIMIT 1
+		FOR UPDATE
+	`, HashSubscriptionHandoffToken(token)).Scan(&inviteID, &subscriptionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SubscriptionHandoffClaim{}, ErrInvalidSubscriptionHandoffToken
+		}
+		return SubscriptionHandoffClaim{}, err
+	}
+
+	if err := ensureSubscriptionEligibleForAccessToken(ctx, tx, subscriptionID); err != nil {
+		return SubscriptionHandoffClaim{}, err
+	}
+
+	access, err := r.Access(ctx, subscriptionID)
+	if err != nil {
+		return SubscriptionHandoffClaim{}, err
+	}
+
+	var claimedAt time.Time
+	err = tx.QueryRowContext(ctx, `
+		UPDATE subscription_handoff_invites
+		SET status = 'claimed',
+		    claimed_at = now(),
+		    updated_at = now()
+		WHERE id = $1
+		RETURNING claimed_at
+	`, inviteID).Scan(&claimedAt)
+	if err != nil {
+		return SubscriptionHandoffClaim{}, err
+	}
+
+	issuedToken, err := replaceAccessTokenInTx(ctx, tx, subscriptionID, accessToken)
+	if err != nil {
+		return SubscriptionHandoffClaim{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return SubscriptionHandoffClaim{}, err
+	}
+
+	return SubscriptionHandoffClaim{
+		SubscriptionID:       subscriptionID,
+		AccessToken:          accessToken,
+		AccessTokenExpiresAt: issuedToken.ExpiresAt,
+		ClaimedAt:            claimedAt,
+		Access:               access,
+	}, nil
 }
 
 type subscriptionQueryer interface {
@@ -629,7 +886,20 @@ func newSubscriptionAccessToken() (string, error) {
 	return "lnksa_" + hex.EncodeToString(raw), nil
 }
 
+func newSubscriptionHandoffToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return "lnkhi_" + hex.EncodeToString(raw), nil
+}
+
 func HashSubscriptionAccessToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func HashSubscriptionHandoffToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }

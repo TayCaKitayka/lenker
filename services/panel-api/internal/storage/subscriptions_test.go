@@ -58,3 +58,15 @@ func TestHashSubscriptionAccessTokenStableAndNotRaw(t *testing.T) {
 		t.Fatalf("expected sha256 hex hash, got %q", first)
 	}
 }
+
+func TestHashSubscriptionHandoffTokenStableAndNotRaw(t *testing.T) {
+	token := "lnkhi_example"
+	first := HashSubscriptionHandoffToken(token)
+	second := HashSubscriptionHandoffToken(token)
+	if first != second {
+		t.Fatalf("expected stable handoff token hash")
+	}
+	if first == token || !strings.Contains("0123456789abcdef", first[:1]) || len(first) != 64 {
+		t.Fatalf("expected sha256 hex hash, got %q", first)
+	}
+}

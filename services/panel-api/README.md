@@ -33,6 +33,7 @@ Current foundation:
 - config revision metadata storage with deterministic signed subscription-aware VLESS Reality Xray config skeleton payloads
 - provider-side subscription access export foundation for the single VLESS Reality MVP path
 - minimal subscription access token lifecycle and read boundary for consumer-facing access export
+- one-time client handoff invite bootstrap foundation for future client access setup
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -76,6 +77,10 @@ Implemented foundation routes:
 - `POST /api/v1/subscriptions/{id}/access-token`
 - `DELETE /api/v1/subscriptions/{id}/access-token`
 - `POST /api/v1/subscriptions/{id}/access-token/rotate`
+- `GET /api/v1/subscriptions/{id}/handoff-invite`
+- `POST /api/v1/subscriptions/{id}/handoff-invite`
+- `DELETE /api/v1/subscriptions/{id}/handoff-invite`
+- `POST /api/v1/client/handoff/claim`
 - `GET /api/v1/client/subscription-access`
 - `GET /api/v1/nodes`
 - `POST /api/v1/nodes/bootstrap-token`
@@ -148,6 +153,15 @@ Subscription access export:
 - `GET /api/v1/client/subscription-access` accepts
   `Authorization: Bearer <subscription_access_token>` and returns a redacted
   access export without admin session auth.
+- `POST /api/v1/subscriptions/{id}/handoff-invite` issues a short-lived
+  one-time plaintext `handoff_token` for bootstrap handoff and stores only its
+  hash.
+- `GET /api/v1/subscriptions/{id}/handoff-invite` returns invite lifecycle
+  status without token material.
+- `DELETE /api/v1/subscriptions/{id}/handoff-invite` revokes the active invite.
+- `POST /api/v1/client/handoff/claim` accepts a plaintext handoff token,
+  consumes it once, creates a normal subscription access token, and returns that
+  token plus the redacted access export.
 - Provider handoff is deliberately out-of-band at this stage: the provider
   copies the plaintext token from the issue/rotate response and gives it to the
   subscriber through an external channel. Later provider reads show only

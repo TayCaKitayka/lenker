@@ -192,6 +192,20 @@ Rotate the active subscription access token.
 
 Revoke the active subscription access token without replacement.
 
+#### `POST /subscriptions/{subscriptionId}/handoff-invite`
+
+Issue a one-time client handoff invite for an active subscription.
+
+#### `GET /subscriptions/{subscriptionId}/handoff-invite`
+
+Return provider-side handoff invite lifecycle status without plaintext invite
+token material.
+
+#### `DELETE /subscriptions/{subscriptionId}/handoff-invite`
+
+Revoke the active handoff invite without affecting an already claimed access
+token.
+
 Current implementation note:
 
 The access token lifecycle uses one active token per subscription. Status values
@@ -280,6 +294,48 @@ curl -fsS -X DELETE "$PANEL_URL/api/v1/subscriptions/$SUBSCRIPTION_ID/access-tok
 After rotation, the previous token is rejected by the client read endpoint.
 After revoke, the current token is rejected. Neither operation exposes a token
 through the status endpoint.
+
+Client handoff bootstrap foundation:
+
+1. A provider admin issues a short-lived handoff invite with
+   `POST /api/v1/subscriptions/{id}/handoff-invite`.
+2. Panel-api returns the plaintext `handoff_token` exactly once and stores only
+   its hash.
+3. The provider sends that invite token to the subscriber out-of-band.
+4. The subscriber or future client claims it with
+   `POST /api/v1/client/handoff/claim`.
+5. A successful claim marks the invite `claimed`, creates a normal active
+   subscription access token, and returns that access token plus the redacted
+   access payload.
+6. The future client can then continue with
+   `GET /api/v1/client/subscription-access` using the returned access token.
+
+Handoff invite status values are `never_issued`, `active`, `claimed`,
+`revoked`, and `expired`. Invites are one-time and short-lived. Issuing a new
+invite revokes any previous active invite for the subscription. Claiming an
+already claimed, revoked, expired, or unknown invite returns unauthorized. This
+is a bootstrap foundation only; it is not full end-user auth, device binding, a
+deeplink platform, or a client app.
+
+Example provider invite issue:
+
+```sh
+curl -fsS -X POST "$PANEL_URL/api/v1/subscriptions/$SUBSCRIPTION_ID/handoff-invite" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Example consumer claim:
+
+```sh
+curl -fsS -X POST "$PANEL_URL/api/v1/client/handoff/claim" \
+  -H 'Content-Type: application/json' \
+  -d "{\"handoff_token\":\"$SUBSCRIPTION_HANDOFF_TOKEN\"}"
+```
+
+#### `POST /client/handoff/claim`
+
+Claim a one-time subscription handoff invite and return a bootstrap payload for
+the single MVP access path.
 
 #### `GET /client/subscription-access`
 
