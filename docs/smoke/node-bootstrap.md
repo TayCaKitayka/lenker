@@ -464,6 +464,12 @@ It verifies:
 - the client access payload matches provider-side endpoint/client data without
   leaking provider-internal `user_id`, `user_label`, or `plan_id`.
 
+On success, the helper prints a short provider-facing handoff summary with the
+subscription id, selected node, endpoint host/port, protocol path, lifecycle
+transition result, client-read result, rotate/revoke checks, and redaction
+status. The summary intentionally does not print the plaintext access token; the
+token remains visible only in the issue/rotate API response inside the helper.
+
 If node-agent is running in the Docker profile, first inspect local agent status:
 
 ```sh

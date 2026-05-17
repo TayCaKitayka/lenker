@@ -166,6 +166,11 @@ curl -fsS "$PANEL_URL/api/v1/client/subscription-access" \
   -H "Authorization: Bearer $SUBSCRIPTION_ACCESS_TOKEN"
 ```
 
+The local `make docker-subscription-access-smoke` helper exercises the same
+handoff path and ends with a compact operational summary. That summary confirms
+the selected subscription/node/endpoint, lifecycle transitions, client read,
+rotate/revoke checks, and redaction status without printing the plaintext token.
+
 Use the token returned by admin login:
 
 ```http

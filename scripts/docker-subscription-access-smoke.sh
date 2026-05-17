@@ -227,13 +227,18 @@ assert_token_status "$repeated_revoke_status_json" "revoked" "true" "2"
 active_config_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/config.json)"
 active_metadata_json="$(docker compose -f "$COMPOSE_FILE" exec -T node-agent cat /var/lib/lenker/node-agent/active/metadata.json)"
 
-ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" ROTATED_CLIENT_ACCESS="$rotated_client_access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" ruby -rjson -ruri -e '
+ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" ROTATED_CLIENT_ACCESS="$rotated_client_access_json" REVISION="$revision_detail_json" CONFIG="$active_config_json" METADATA="$active_metadata_json" NODE_ID="$node_id" SUBSCRIPTION_ID="$subscription_id" INITIAL_STATUS="$initial_token_status_json" ISSUED_STATUS="$issued_token_status_json" ROTATED_STATUS="$rotated_token_status_json" REVOKED_STATUS="$revoked_token_status_json" REPEATED_REVOKE_STATUS="$repeated_revoke_status_json" ruby -rjson -ruri -e '
   access = JSON.parse(ENV.fetch("ACCESS")).fetch("data")
   client_access = JSON.parse(ENV.fetch("CLIENT_ACCESS")).fetch("data")
   rotated_client_access = JSON.parse(ENV.fetch("ROTATED_CLIENT_ACCESS")).fetch("data")
   revision = JSON.parse(ENV.fetch("REVISION")).fetch("data")
   config = JSON.parse(ENV.fetch("CONFIG"))
   metadata = JSON.parse(ENV.fetch("METADATA"))
+  initial_status = JSON.parse(ENV.fetch("INITIAL_STATUS")).fetch("data")
+  issued_status = JSON.parse(ENV.fetch("ISSUED_STATUS")).fetch("data")
+  rotated_status = JSON.parse(ENV.fetch("ROTATED_STATUS")).fetch("data")
+  revoked_status = JSON.parse(ENV.fetch("REVOKED_STATUS")).fetch("data")
+  repeated_revoke_status = JSON.parse(ENV.fetch("REPEATED_REVOKE_STATUS")).fetch("data")
   node_id = ENV.fetch("NODE_ID")
   subscription_id = ENV.fetch("SUBSCRIPTION_ID")
 
@@ -280,17 +285,26 @@ ACCESS="$access_json" CLIENT_ACCESS="$client_access_json" ROTATED_CLIENT_ACCESS=
   abort("uri short id mismatch") unless query["sid"] == access.dig("endpoint", "short_id")
   abort("uri public key mismatch") unless query["pbk"] == access.dig("endpoint", "public_key")
 
-  summary = {
-    subscription_id: subscription_id,
-    node_id: node_id,
-    revision_number: revision["revision_number"],
-    access_protocol: access["protocol"],
-    access_address: access.dig("endpoint", "address"),
-    access_client_id: access.dig("client", "id"),
-    client_access_redacted: !client_access.key?("user_id") && !client_access.key?("plan_id"),
-    active_config_clients: inbound.fetch("settings").fetch("clients").length
-  }
-  puts JSON.pretty_generate(summary)
+  abort("initial token status mismatch") unless initial_status["status"] == "never_issued"
+  abort("issued token status mismatch") unless issued_status["status"] == "active" && issued_status["generation"].to_i == 1
+  abort("rotated token status mismatch") unless rotated_status["status"] == "active" && rotated_status["generation"].to_i == 2
+  abort("revoked token status mismatch") unless revoked_status["status"] == "revoked" && revoked_status["generation"].to_i == 2
+  abort("repeated revoke status mismatch") unless repeated_revoke_status["status"] == "revoked" && repeated_revoke_status["generation"].to_i == 2
+
+  puts ""
+  puts "Subscription handoff smoke summary"
+  puts "  subscription_id: #{subscription_id}"
+  puts "  selected_node_id: #{node_id}"
+  puts "  selected_node_hostname: #{access.dig("node", "hostname")}"
+  puts "  endpoint: #{access.dig("endpoint", "address")}:#{access.dig("endpoint", "port")}"
+  puts "  protocol_path: #{access["protocol_path"]}"
+  puts "  applied_revision: #{revision["revision_number"]}"
+  puts "  lifecycle: #{initial_status["status"]} -> #{issued_status["status"]} -> #{rotated_status["status"]}(generation #{rotated_status["generation"]}) -> #{revoked_status["status"]}"
+  puts "  client_read: ok"
+  puts "  rotate_check: old token rejected, rotated token accepted"
+  puts "  revoke_check: revoked token rejected, repeated revoke safe"
+  puts "  client_payload_redacted: #{!client_access.key?("user_id") && !client_access.key?("plan_id")}"
+  puts "  plaintext_token_printed: false"
 '
 
-log "subscription access export smoke passed"
+log "subscription access handoff smoke passed"
