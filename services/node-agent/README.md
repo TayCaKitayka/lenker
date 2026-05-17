@@ -178,6 +178,17 @@ make docker-build
 make docker-runtime-smoke
 ```
 
+For the controlled failure-mode check, run:
+
+```sh
+make docker-runtime-failure-smoke
+```
+
+It applies a baseline revision, forces a missing-binary Xray dry-run failure on
+the next revision, and verifies that the failed report, runtime readiness, and
+`dry_run_failure` event are persisted while the previous active artifact stays
+active.
+
 `LENKER_LOCAL_XRAY_DIR` is only a local bind-mount source for
 `deploy/docker/docker-compose.local.yml`; no Xray binary is downloaded or baked
 into the image. If `LENKER_AGENT_XRAY_BIN` is set but the binary is missing, the

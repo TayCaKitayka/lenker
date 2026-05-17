@@ -406,6 +406,23 @@ node, creates a config revision, restarts node-agent with the registered node
 id/token, waits for polling apply/report, checks active local artifacts, and
 verifies node detail runtime readiness plus persisted `runtime_events`.
 
+For the scripted failure-mode path, run:
+
+```sh
+make docker-runtime-failure-smoke
+```
+
+The failure helper first applies a baseline revision, then creates a second
+revision and restarts node-agent with `LENKER_AGENT_XRAY_BIN` pointing at a
+missing binary. Expected result:
+
+- the second revision reports `failed`, not `applied`;
+- `last_validation_error` starts with
+  `xray_dry_run_failed:xray_binary_not_found`;
+- node active revision and active local artifact stay on the baseline revision;
+- runtime readiness moves to `validation_failed`;
+- persisted `runtime_events` include `dry_run_failure`.
+
 If node-agent is running in the Docker profile, first inspect local agent status:
 
 ```sh
