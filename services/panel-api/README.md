@@ -72,6 +72,7 @@ Implemented foundation routes:
 - `PATCH /api/v1/subscriptions/{id}`
 - `POST /api/v1/subscriptions/{id}/renew`
 - `GET /api/v1/subscriptions/{id}/access`
+- `GET /api/v1/subscriptions/{id}/access-token`
 - `POST /api/v1/subscriptions/{id}/access-token`
 - `DELETE /api/v1/subscriptions/{id}/access-token`
 - `POST /api/v1/subscriptions/{id}/access-token/rotate`
@@ -131,6 +132,9 @@ Subscription access export:
 - It returns a deterministic `subscription_access.v1alpha1` object and VLESS URI
   for the single MVP `VLESS + Reality + XTLS Vision` path.
 - The access token lifecycle is one active token per subscription.
+- `GET /api/v1/subscriptions/{id}/access-token` returns read-only lifecycle
+  status (`never_issued`, `active`, or `revoked`) plus timestamps and generation
+  count without returning plaintext token material.
 - `POST /api/v1/subscriptions/{id}/access-token` is admin-only and returns a
   plaintext access token once; issuing revokes any previous active token.
 - `POST /api/v1/subscriptions/{id}/access-token/rotate` revokes the previous

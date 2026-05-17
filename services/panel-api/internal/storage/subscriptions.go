@@ -53,9 +53,12 @@ type SubscriptionAccessToken struct {
 }
 
 type SubscriptionAccessTokenStatus struct {
-	SubscriptionID string    `json:"subscription_id"`
-	Status         string    `json:"status"`
-	RevokedAt      time.Time `json:"revoked_at"`
+	SubscriptionID string     `json:"subscription_id"`
+	Status         string     `json:"status"`
+	Issued         bool       `json:"issued"`
+	IssuedAt       *time.Time `json:"issued_at,omitempty"`
+	RevokedAt      *time.Time `json:"revoked_at,omitempty"`
+	Generation     int        `json:"generation"`
 }
 
 type SubscriptionAccessNode struct {
@@ -109,6 +112,7 @@ type SubscriptionsRepository interface {
 	Create(ctx context.Context, input CreateSubscriptionInput) (Subscription, error)
 	FindByID(ctx context.Context, id string) (Subscription, error)
 	Access(ctx context.Context, id string) (SubscriptionAccess, error)
+	AccessTokenStatus(ctx context.Context, id string) (SubscriptionAccessTokenStatus, error)
 	CreateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error)
 	RotateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error)
 	RevokeAccessToken(ctx context.Context, id string) (SubscriptionAccessTokenStatus, error)
@@ -408,6 +412,64 @@ func (r *subscriptionsRepository) CreateAccessToken(ctx context.Context, id stri
 	return r.replaceAccessToken(ctx, id)
 }
 
+func (r *subscriptionsRepository) AccessTokenStatus(ctx context.Context, id string) (SubscriptionAccessTokenStatus, error) {
+	if _, err := r.FindByID(ctx, id); err != nil {
+		return SubscriptionAccessTokenStatus{}, err
+	}
+
+	var row struct {
+		status     sql.NullString
+		createdAt  sql.NullTime
+		updatedAt  sql.NullTime
+		generation int
+	}
+	err := r.db.QueryRowContext(ctx, `
+		WITH token_counts AS (
+			SELECT COUNT(*)::int AS generation
+			FROM subscription_access_tokens
+			WHERE subscription_id = $1
+		),
+		current_token AS (
+			SELECT status, created_at, updated_at
+			FROM subscription_access_tokens
+			WHERE subscription_id = $1
+			ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+			         created_at DESC
+			LIMIT 1
+		)
+		SELECT current_token.status,
+		       current_token.created_at,
+		       current_token.updated_at,
+		       token_counts.generation
+		FROM token_counts
+		LEFT JOIN current_token ON true
+	`, id).Scan(&row.status, &row.createdAt, &row.updatedAt, &row.generation)
+	if err != nil {
+		return SubscriptionAccessTokenStatus{}, err
+	}
+
+	status := SubscriptionAccessTokenStatus{
+		SubscriptionID: id,
+		Status:         "never_issued",
+		Generation:     row.generation,
+	}
+	if !row.status.Valid {
+		return status, nil
+	}
+
+	status.Issued = true
+	status.Status = row.status.String
+	if row.createdAt.Valid {
+		issuedAt := row.createdAt.Time
+		status.IssuedAt = &issuedAt
+	}
+	if row.status.String == "revoked" && row.updatedAt.Valid {
+		revokedAt := row.updatedAt.Time
+		status.RevokedAt = &revokedAt
+	}
+	return status, nil
+}
+
 func (r *subscriptionsRepository) RotateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error) {
 	return r.replaceAccessToken(ctx, id)
 }
@@ -467,26 +529,16 @@ func (r *subscriptionsRepository) RevokeAccessToken(ctx context.Context, id stri
 		return SubscriptionAccessTokenStatus{}, err
 	}
 
-	var revokedAt time.Time
-	err := r.db.QueryRowContext(ctx, `
-		WITH revoked AS (
-			UPDATE subscription_access_tokens
-			SET status = 'revoked',
-			    updated_at = now()
-			WHERE subscription_id = $1
-			  AND status = 'active'
-			RETURNING updated_at
-		)
-		SELECT COALESCE((SELECT MAX(updated_at) FROM revoked), now())
-	`, id).Scan(&revokedAt)
-	if err != nil {
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE subscription_access_tokens
+		SET status = 'revoked',
+		    updated_at = now()
+		WHERE subscription_id = $1
+		  AND status = 'active'
+	`, id); err != nil {
 		return SubscriptionAccessTokenStatus{}, err
 	}
-	return SubscriptionAccessTokenStatus{
-		SubscriptionID: id,
-		Status:         "revoked",
-		RevokedAt:      revokedAt,
-	}, nil
+	return r.AccessTokenStatus(ctx, id)
 }
 
 func (r *subscriptionsRepository) AccessByToken(ctx context.Context, token string) (SubscriptionAccess, error) {

@@ -180,6 +180,10 @@ Return provider-side access export metadata for the supported client path.
 
 Issue a plaintext subscription access token for the active subscription.
 
+#### `GET /subscriptions/{subscriptionId}/access-token`
+
+Return provider-side token lifecycle status without plaintext token material.
+
 #### `POST /subscriptions/{subscriptionId}/access-token/rotate`
 
 Rotate the active subscription access token.
@@ -193,9 +197,11 @@ Current implementation note:
 The access token lifecycle uses one active token per subscription. Issue and
 rotate both revoke any previous active token before returning a new plaintext
 token once in the response. Revoke invalidates the current token without
-returning token material. Panel-api stores only SHA-256 token hashes; tokens
-expire with the subscription and are accepted only by the consumer-facing access
-read endpoint.
+returning token material. The read-only status endpoint exposes whether a token
+was never issued, is active, or is revoked, plus issued/revoked timestamps and a
+generation count. Panel-api stores only SHA-256 token hashes; tokens expire with
+the subscription and are accepted only by the consumer-facing access read
+endpoint.
 
 #### `GET /client/subscription-access`
 

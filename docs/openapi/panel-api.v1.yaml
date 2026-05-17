@@ -381,6 +381,23 @@ paths:
   /api/v1/subscriptions/{id}/access-token:
     parameters:
       - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Subscriptions]
+      summary: Get subscription access token lifecycle status
+      description: Returns provider-side lifecycle metadata for the current subscription access token without returning plaintext token material.
+      responses:
+        "200":
+          description: Subscription access token lifecycle status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionAccessTokenStatusEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
     post:
       tags: [Subscriptions]
       summary: Issue a subscription access token
@@ -1320,16 +1337,25 @@ components:
               $ref: "#/components/schemas/SubscriptionAccessToken"
     SubscriptionAccessTokenStatus:
       type: object
-      required: [subscription_id, status, revoked_at]
+      required: [subscription_id, status, issued, generation]
       properties:
         subscription_id:
           type: string
         status:
           type: string
-          enum: [revoked]
+          enum: [never_issued, active, revoked]
+        issued:
+          type: boolean
+        issued_at:
+          type: string
+          format: date-time
+          nullable: true
         revoked_at:
           type: string
           format: date-time
+          nullable: true
+        generation:
+          type: integer
     SubscriptionAccessTokenStatusEnvelope:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"

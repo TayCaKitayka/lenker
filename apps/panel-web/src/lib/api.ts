@@ -174,8 +174,11 @@ export interface SubscriptionAccessToken {
 
 export interface SubscriptionAccessTokenStatus {
   subscription_id: string;
-  status: "revoked";
-  revoked_at: string;
+  status: "never_issued" | "active" | "revoked";
+  issued: boolean;
+  issued_at?: string | null;
+  revoked_at?: string | null;
+  generation: number;
 }
 
 
@@ -435,6 +438,17 @@ export async function getSubscriptionAccess(session: StoredSession, subscription
   const payload = await authorizedRequest<SubscriptionAccessResponse>(
     session,
     `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/access`,
+  );
+  return payload.data;
+}
+
+export async function getSubscriptionAccessTokenStatus(
+  session: StoredSession,
+  subscriptionID: string,
+): Promise<SubscriptionAccessTokenStatus> {
+  const payload = await authorizedRequest<SubscriptionAccessTokenStatusResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/access-token`,
   );
   return payload.data;
 }

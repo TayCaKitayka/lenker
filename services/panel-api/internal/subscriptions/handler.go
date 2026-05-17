@@ -38,6 +38,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/v1/subscriptions/{id}", h.adminOnly(http.HandlerFunc(h.Update)))
 	mux.Handle("POST /api/v1/subscriptions/{id}/renew", h.adminOnly(http.HandlerFunc(h.Renew)))
 	mux.Handle("GET /api/v1/subscriptions/{id}/access", h.adminOnly(http.HandlerFunc(h.Access)))
+	mux.Handle("GET /api/v1/subscriptions/{id}/access-token", h.adminOnly(http.HandlerFunc(h.AccessTokenStatus)))
 	mux.Handle("POST /api/v1/subscriptions/{id}/access-token", h.adminOnly(http.HandlerFunc(h.CreateAccessToken)))
 	mux.Handle("DELETE /api/v1/subscriptions/{id}/access-token", h.adminOnly(http.HandlerFunc(h.RevokeAccessToken)))
 	mux.Handle("POST /api/v1/subscriptions/{id}/access-token/rotate", h.adminOnly(http.HandlerFunc(h.RotateAccessToken)))
@@ -119,6 +120,15 @@ func (h *Handler) CreateAccessToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusCreated, httpapi.Response{Data: token})
+}
+
+func (h *Handler) AccessTokenStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.subscriptions.AccessTokenStatus(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: status})
 }
 
 func (h *Handler) RotateAccessToken(w http.ResponseWriter, r *http.Request) {

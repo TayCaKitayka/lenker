@@ -3,6 +3,7 @@ import {
   createSubscriptionAccessToken,
   createSubscription,
   getSubscriptionAccess,
+  getSubscriptionAccessTokenStatus,
   listPlans,
   listSubscriptions,
   listUsers,
@@ -15,6 +16,7 @@ import {
   type Subscription,
   type SubscriptionAccess,
   type SubscriptionAccessToken,
+  type SubscriptionAccessTokenStatus,
   type User,
 } from "../lib/api";
 import type { StoredSession } from "../lib/session";
@@ -54,6 +56,7 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
   const [accessSubscriptionID, setAccessSubscriptionID] = useState<string | null>(null);
   const [subscriptionAccess, setSubscriptionAccess] = useState<SubscriptionAccess | null>(null);
   const [accessTokenResult, setAccessTokenResult] = useState<SubscriptionAccessToken | null>(null);
+  const [accessTokenStatus, setAccessTokenStatus] = useState<SubscriptionAccessTokenStatus | null>(null);
   const [tokenAction, setTokenAction] = useState<"issue" | "rotate" | "revoke" | null>(null);
 
   const activeSubscriptions = useMemo(
@@ -145,9 +148,13 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
     setSuccessMessage(null);
 
     try {
-      const access = await getSubscriptionAccess(session, subscription.id);
+      const [access, tokenStatus] = await Promise.all([
+        getSubscriptionAccess(session, subscription.id),
+        getSubscriptionAccessTokenStatus(session, subscription.id),
+      ]);
       setSubscriptionAccess(access);
       setAccessTokenResult(null);
+      setAccessTokenStatus(tokenStatus);
       setSuccessMessage("Subscription access export loaded.");
     } catch (error) {
       if (handleUnauthorizedError(error, onUnauthorized)) {
@@ -172,6 +179,7 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
     try {
       const token = await createSubscriptionAccessToken(session, subscriptionAccess.subscription_id);
       setAccessTokenResult(token);
+      setAccessTokenStatus((currentStatus) => tokenStatusFromToken(token, currentStatus?.generation));
       setSuccessMessage("Subscription access token issued.");
     } catch (error) {
       if (handleUnauthorizedError(error, onUnauthorized)) {
@@ -195,6 +203,7 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
     try {
       const token = await rotateSubscriptionAccessToken(session, subscriptionAccess.subscription_id);
       setAccessTokenResult(token);
+      setAccessTokenStatus((currentStatus) => tokenStatusFromToken(token, currentStatus?.generation));
       setSuccessMessage("Subscription access token rotated.");
     } catch (error) {
       if (handleUnauthorizedError(error, onUnauthorized)) {
@@ -216,8 +225,9 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
     setSuccessMessage(null);
 
     try {
-      await revokeSubscriptionAccessToken(session, subscriptionAccess.subscription_id);
+      const tokenStatus = await revokeSubscriptionAccessToken(session, subscriptionAccess.subscription_id);
       setAccessTokenResult(null);
+      setAccessTokenStatus(tokenStatus);
       setSuccessMessage("Subscription access token revoked.");
     } catch (error) {
       if (handleUnauthorizedError(error, onUnauthorized)) {
@@ -609,6 +619,28 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
               </button>
             </div>
           </div>
+          {accessTokenStatus ? (
+            <dl className="node-detail-grid">
+              <div>
+                <dt>status</dt>
+                <dd>{formatAccessTokenStatus(accessTokenStatus)}</dd>
+              </div>
+              <div>
+                <dt>generation</dt>
+                <dd>{accessTokenStatus.generation || "-"}</dd>
+              </div>
+              <div>
+                <dt>issued</dt>
+                <dd>{accessTokenStatus.issued_at ? formatDate(accessTokenStatus.issued_at) : "never issued"}</dd>
+              </div>
+              <div>
+                <dt>revoked</dt>
+                <dd>{accessTokenStatus.revoked_at ? formatDate(accessTokenStatus.revoked_at) : "-"}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="state-text">Token lifecycle status is not loaded.</p>
+          )}
           {accessTokenResult ? (
             <>
               <dl className="node-detail-grid">
@@ -662,6 +694,24 @@ function formatTraffic(usedBytes: number, limitBytes: number | null): string {
     return `${used} / unlimited`;
   }
   return `${used} / ${new Intl.NumberFormat(undefined).format(limitBytes)}`;
+}
+
+function formatAccessTokenStatus(status: SubscriptionAccessTokenStatus): string {
+  if (!status.issued || status.status === "never_issued") {
+    return "never issued";
+  }
+  return status.status;
+}
+
+function tokenStatusFromToken(token: SubscriptionAccessToken, previousGeneration = 0): SubscriptionAccessTokenStatus {
+  return {
+    subscription_id: token.subscription_id,
+    status: "active",
+    issued: true,
+    issued_at: token.created_at,
+    revoked_at: null,
+    generation: Math.max(previousGeneration + 1, 1),
+  };
 }
 
 function handleUnauthorizedError(error: unknown, onUnauthorized: () => void): boolean {
