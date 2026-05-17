@@ -37,11 +37,14 @@ func TestBuildRegistrationPayload(t *testing.T) {
 }
 
 func TestRegisteredIdentityStartsActive(t *testing.T) {
-	service := NewService(Identity{NodeID: "node-1"})
+	service := NewService(Identity{NodeID: "node-1", XrayBin: "/usr/local/bin/xray"})
 
 	status := service.Status()
 	if status.Status != StatusActive || !status.Registered {
 		t.Fatalf("expected active registered status, got %#v", status)
+	}
+	if !status.XrayDryRunEnabled {
+		t.Fatalf("expected xray dry-run enabled status")
 	}
 }
 

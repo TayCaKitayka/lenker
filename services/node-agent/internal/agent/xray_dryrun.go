@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -58,6 +59,12 @@ func (v CommandXrayDryRunValidator) Validate(ctx context.Context, configPath str
 		return XrayDryRunError{Reason: "timeout"}
 	}
 	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) {
+			return XrayDryRunError{Reason: "xray_binary_not_found"}
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return XrayDryRunError{Reason: "xray_binary_not_executable"}
+		}
 		return XrayDryRunError{Reason: compactXrayDryRunReason(output)}
 	}
 	return nil

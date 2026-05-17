@@ -171,16 +171,20 @@ artifacts, switches active local config files only after staging succeeds, store
 metadata in memory, and reports `applied` or `failed` status back to the panel.
 When `LENKER_AGENT_XRAY_BIN` is configured, node-agent also performs a one-shot
 `xray run -test -config <candidate>` dry-run after internal validation and
-before staged -> active. Panel-api also runs a lightweight renderer precheck
-before signing, but node-agent is the authoritative apply boundary. Rollback is
-a revision-level file switch foundation: panel-api can create a pending rollback
-revision from an applied source, and the agent applies it through the same
-validation and staged -> active local file path. The agent reports read-only
-runtime readiness metadata (`last_validation_status`, error, timestamp, last
-applied revision, and active config path) through the revision report and
-heartbeat contracts so panel admins can inspect the latest local validation
-result. No Xray daemon, reload, restart, or supervisor is controlled by this
-layer.
+before staged -> active. In the local Docker profile this is dev-only wiring:
+the host binary directory can be bind-mounted with `LENKER_LOCAL_XRAY_DIR` and
+exposed to the agent through `LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/xray`; the
+default profile leaves the variable empty and mounts an empty directory.
+Panel-api also runs a lightweight renderer precheck before signing, but
+node-agent is the authoritative apply boundary.
+Rollback is a revision-level file switch foundation: panel-api can create a
+pending rollback revision from an applied source, and the agent applies it
+through the same validation and staged -> active local file path. The agent
+reports read-only runtime readiness metadata (`last_validation_status`, error,
+timestamp, last applied revision, and active config path) through the revision
+report and heartbeat contracts so panel admins can inspect the latest local
+validation result. No Xray daemon, reload, restart, or supervisor is controlled
+by this layer, and the dev profile does not download or bake Xray into images.
 
 ### Boundary 3: User App to Panel
 

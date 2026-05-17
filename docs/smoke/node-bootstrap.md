@@ -198,6 +198,31 @@ payload. Set `LENKER_AGENT_XRAY_BIN=/path/to/xray` to enable the optional
 one-shot `xray run -test -config <candidate>` boundary. Leave it unset to use
 the default internal validation path.
 
+For Docker local development, the default profile leaves Xray dry-run disabled:
+
+```sh
+unset LENKER_AGENT_XRAY_BIN
+make docker-up
+```
+
+If a local Xray binary is already installed, opt in explicitly without
+downloading or baking it into the image:
+
+```sh
+export LENKER_LOCAL_XRAY_DIR="$(dirname "$(command -v xray)")"
+export LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/xray
+make docker-up
+```
+
+The compose file bind-mounts `$LENKER_LOCAL_XRAY_DIR` to `/opt/lenker/xray`.
+`GET http://localhost:8090/status` should show
+`"xray_dry_run_enabled":true`. A successful pending revision apply then proves
+the candidate passed `xray run -test -config <candidate>` before staged ->
+active. To verify the failure path, set `LENKER_AGENT_XRAY_BIN` to a missing
+path and create a new revision; the revision should report `failed` with
+`xray_dry_run_failed:xray_binary_not_found`, while the previous active config
+remains unchanged.
+
 The node detail response also exposes read-only runtime readiness metadata after
 apply/failure: `last_validation_status`, `last_validation_error`,
 `last_validation_at`, `last_applied_revision`, and `active_config_path`.

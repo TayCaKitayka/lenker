@@ -37,6 +37,7 @@ Configuration:
 - `LENKER_AGENT_LOG_LEVEL`
 - `LENKER_AGENT_HEARTBEAT_INTERVAL`
 - `LENKER_AGENT_CONFIG_POLL_INTERVAL`
+- `LENKER_AGENT_XRAY_BIN`
 - `LENKER_AGENT_TLS_ENABLED`
 
 Local run:
@@ -131,6 +132,25 @@ Only a successful one-shot validation lets the agent continue to the staged ->
 active file switch. Without `LENKER_AGENT_XRAY_BIN`, the current internal
 validation and staged apply path remains unchanged. The agent does not download
 Xray, start it as a daemon, reload it, restart it, or supervise it.
+
+For the local Docker profile, keep `LENKER_AGENT_XRAY_BIN` unset for the default
+happy path. The compose file mounts an empty local directory at
+`/opt/lenker/xray`, so no binary is present unless you opt in. To test against a
+host-installed Xray binary, mount the directory that contains it and point the
+agent at the container path:
+
+```sh
+export LENKER_LOCAL_XRAY_DIR="$(dirname "$(command -v xray)")"
+export LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/xray
+make docker-up
+```
+
+`LENKER_LOCAL_XRAY_DIR` is only a local bind-mount source for
+`deploy/docker/docker-compose.local.yml`; no Xray binary is downloaded or baked
+into the image. If `LENKER_AGENT_XRAY_BIN` is set but the binary is missing, the
+apply report fails with `xray_dry_run_failed:xray_binary_not_found`. Local
+`GET /status` exposes `xray_dry_run_enabled` so the dev profile can confirm that
+the optional boundary is active.
 
 After validation, the agent reports `applied` to panel-api. Validation failures
 such as bad hash, bad signature, malformed payload, incompatible Xray config, or

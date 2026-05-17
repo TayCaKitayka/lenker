@@ -54,10 +54,11 @@ func NewService(identity Identity, options ...ServiceOption) *Service {
 	service := &Service{
 		identity: identity,
 		status: Status{
-			NodeID:     identity.NodeID,
-			Status:     status,
-			Registered: registered,
-			PanelURL:   identity.PanelURL,
+			NodeID:            identity.NodeID,
+			Status:            status,
+			Registered:        registered,
+			PanelURL:          identity.PanelURL,
+			XrayDryRunEnabled: strings.TrimSpace(identity.XrayBin) != "",
 		},
 		configRevisions: make(map[int]ConfigRevision),
 	}
