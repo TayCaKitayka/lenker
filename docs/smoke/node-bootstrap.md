@@ -223,6 +223,25 @@ path and create a new revision; the revision should report `failed` with
 `xray_dry_run_failed:xray_binary_not_found`, while the previous active config
 remains unchanged.
 
+For a reproducible failed dry-run fixture without downloading Xray or running a
+supervisor, use the node-agent fixture test:
+
+```sh
+cd services/node-agent
+go test ./internal/agent -run CommandDryRunFixture
+```
+
+The fixture binary at `internal/agent/testdata/xray-dry-run-fail.sh` accepts the
+same `run -test -config <candidate>` command shape, verifies that the candidate
+config exists, then exits non-zero. Expected result:
+
+- the pending revision is reported as `failed`;
+- `error_message` stays compact:
+  `xray_dry_run_failed:xray_dry_run_failed_invalid_inbound_for_smoke_fixture`;
+- `last_validation_status`, `last_validation_error`, and
+  `last_validation_at` reflect the failure;
+- the previous `active/config.json` and active revision remain unchanged.
+
 The node detail response also exposes read-only runtime readiness metadata after
 apply/failure: `last_validation_status`, `last_validation_error`,
 `last_validation_at`, `last_applied_revision`, and `active_config_path`.

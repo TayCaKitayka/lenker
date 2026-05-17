@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -441,6 +442,73 @@ func TestPollPendingConfigRevisionDryRunFailureReportsFailedAndKeepsActive(t *te
 	}
 	if service.Status().LastValidationStatus != "failed" || service.Status().LastValidationError != "xray_dry_run_failed:invalid_inbound" {
 		t.Fatalf("expected failed validation status: %#v", service.Status())
+	}
+}
+
+func TestPollPendingConfigRevisionCommandDryRunFixtureReportsFailedAndKeepsActive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is unix-specific")
+	}
+
+	revisionA := signedTestConfigRevision(t, "node-1", 1, 0)
+	stateDir := t.TempDir()
+	setupService := NewService(Identity{NodeID: "node-1", StateDir: stateDir})
+	if err := setupService.ApplyConfigRevision(revisionA); err != nil {
+		t.Fatalf("expected initial active revision: %v", err)
+	}
+	previousActivePath := setupService.Status().ConfigArtifactPath
+	previousActive, err := os.ReadFile(previousActivePath)
+	if err != nil {
+		t.Fatalf("expected previous active config: %v", err)
+	}
+
+	fixtureBinary := copyExecutableFixture(t, "testdata/xray-dry-run-fail.sh")
+	revisionB := signedTestConfigRevision(t, "node-1", 2, 1)
+	client := &fakePendingConfigRevisionClient{revision: revisionB, ok: true}
+	service := NewService(Identity{
+		NodeID:    "node-1",
+		NodeToken: "node-token",
+		StateDir:  stateDir,
+		XrayBin:   fixtureBinary,
+	})
+	service.status.ActiveRevision = 1
+	service.status.LastAppliedRevision = 1
+	service.status.ConfigArtifactPath = previousActivePath
+	now := time.Date(2026, 5, 17, 9, 10, 11, 0, time.UTC)
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, now)
+	if !errors.Is(err, ErrXrayDryRunFailed) {
+		t.Fatalf("expected command dry-run failure, got %v", err)
+	}
+	if applied {
+		t.Fatalf("failed command dry-run must not apply revision")
+	}
+	currentActive, err := os.ReadFile(previousActivePath)
+	if err != nil {
+		t.Fatalf("expected active config after failed dry-run: %v", err)
+	}
+	if string(currentActive) != string(previousActive) {
+		t.Fatalf("failed dry-run fixture changed active config:\n%s\n---\n%s", string(currentActive), string(previousActive))
+	}
+	if service.Status().ActiveRevision != 1 || service.Status().LastAppliedRevision != 1 {
+		t.Fatalf("failed dry-run fixture must keep active revision: %#v", service.Status())
+	}
+	const expectedReason = "xray_dry_run_failed:xray_dry_run_failed_invalid_inbound_for_smoke_fixture"
+	if !client.reported || client.report.Status != "failed" || client.report.ErrorMessage != expectedReason {
+		t.Fatalf("expected compact failed dry-run report, got %#v", client.report)
+	}
+	if client.report.LastValidationStatus != "failed" || client.report.LastValidationError != expectedReason {
+		t.Fatalf("expected failed runtime metadata report, got %#v", client.report)
+	}
+	if !client.report.LastValidationAt.Equal(now) {
+		t.Fatalf("expected validation timestamp in report, got %#v", client.report)
+	}
+	status := service.Status()
+	if status.LastValidationStatus != "failed" || status.LastValidationError != expectedReason || !status.LastValidationAt.Equal(now) {
+		t.Fatalf("expected failed validation status metadata: %#v", status)
+	}
+	if status.ConfigArtifactPath != previousActivePath {
+		t.Fatalf("failed dry-run must keep active config path, got %#v", status)
 	}
 }
 
@@ -999,4 +1067,17 @@ func (c *fakePendingConfigRevisionClient) ReportConfigRevision(ctx context.Conte
 	c.reportID = revisionID
 	c.report = report
 	return c.reportErr
+}
+
+func copyExecutableFixture(t *testing.T, source string) string {
+	t.Helper()
+	body, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatalf("expected fixture %s: %v", source, err)
+	}
+	path := filepath.Join(t.TempDir(), filepath.Base(source))
+	if err := os.WriteFile(path, body, 0o700); err != nil {
+		t.Fatalf("expected executable fixture copy: %v", err)
+	}
+	return path
 }

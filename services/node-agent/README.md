@@ -152,6 +152,15 @@ apply report fails with `xray_dry_run_failed:xray_binary_not_found`. Local
 `GET /status` exposes `xray_dry_run_enabled` so the dev profile can confirm that
 the optional boundary is active.
 
+For a reproducible failed dry-run path without a real Xray binary, the
+node-agent tests include `internal/agent/testdata/xray-dry-run-fail.sh`. The
+fixture accepts the same `run -test -config <candidate>` invocation, verifies
+that a candidate config file exists, then exits non-zero with a stable message.
+`go test ./internal/agent -run CommandDryRunFixture` proves that node-agent
+reports `failed`, preserves the previous active config, and records compact
+runtime readiness metadata without starting, restarting, reloading, or
+supervising Xray.
+
 After validation, the agent reports `applied` to panel-api. Validation failures
 such as bad hash, bad signature, malformed payload, incompatible Xray config, or
 Xray dry-run failure, or local artifact write failure are reported as `failed`
