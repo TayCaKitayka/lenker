@@ -211,6 +211,16 @@ audit event platform.
 - user auth is email-first
 - session tokens must be scoped to app use
 
+Current implementation note:
+
+The first client-delivery foundation is provider-side only: admins can request
+`GET /api/v1/subscriptions/{id}/access` to inspect a deterministic
+`subscription_access.v1alpha1` export for an active subscription on the single
+MVP `VLESS + Reality + XTLS Vision` path. The export reuses subscription, user,
+plan, and active node data and applies a documented MVP node-selection rule. It
+does not implement end-user app authentication, device binding, marketplace
+provider discovery, billing, or multi-protocol delivery.
+
 ### Boundary 4: Secrets and Persistent State
 
 - subscription secrets and node trust material must not be stored in plaintext where avoidable

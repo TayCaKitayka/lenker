@@ -15,6 +15,7 @@ EXPECTED_OPERATIONS = {
   "/api/v1/plans/{id}/archive" => %w[post],
   "/api/v1/subscriptions" => %w[get post],
   "/api/v1/subscriptions/{id}" => %w[get patch],
+  "/api/v1/subscriptions/{id}/access" => %w[get],
   "/api/v1/subscriptions/{id}/renew" => %w[post],
   "/api/v1/nodes" => %w[get],
   "/api/v1/nodes/bootstrap-token" => %w[post],

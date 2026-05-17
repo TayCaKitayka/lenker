@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   createSubscription,
+  getSubscriptionAccess,
   listPlans,
   listSubscriptions,
   listUsers,
@@ -9,6 +10,7 @@ import {
   updateSubscription,
   type Plan,
   type Subscription,
+  type SubscriptionAccess,
   type User,
 } from "../lib/api";
 import type { StoredSession } from "../lib/session";
@@ -45,6 +47,8 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [mutatingSubscriptionID, setMutatingSubscriptionID] = useState<string | null>(null);
+  const [accessSubscriptionID, setAccessSubscriptionID] = useState<string | null>(null);
+  const [subscriptionAccess, setSubscriptionAccess] = useState<SubscriptionAccess | null>(null);
 
   const activeSubscriptions = useMemo(
     () => subscriptions.filter((subscription) => subscription.status === "active").length,
@@ -127,6 +131,26 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
     setEditingSubscription(null);
     setFormState(emptySubscriptionForm());
     setSuccessMessage(message ?? null);
+  }
+
+  async function loadSubscriptionAccess(subscription: Subscription) {
+    setAccessSubscriptionID(subscription.id);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const access = await getSubscriptionAccess(session, subscription.id);
+      setSubscriptionAccess(access);
+      setSuccessMessage("Subscription access export loaded.");
+    } catch (error) {
+      if (handleUnauthorizedError(error, onUnauthorized)) {
+        return;
+      }
+      setSubscriptionAccess(null);
+      setErrorMessage(formatPanelError(error, "Unable to load subscription access."));
+    } finally {
+      setAccessSubscriptionID(null);
+    }
   }
 
   function startEdit(subscription: Subscription) {
@@ -424,6 +448,14 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
                       >
                         {mutatingSubscriptionID === subscription.id ? "Renewing..." : `Renew ${formState.renewDays || "?"}d`}
                       </button>
+                      <button
+                        className="table-button"
+                        type="button"
+                        onClick={() => loadSubscriptionAccess(subscription)}
+                        disabled={accessSubscriptionID === subscription.id}
+                      >
+                        {accessSubscriptionID === subscription.id ? "Loading..." : "Access"}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -431,6 +463,60 @@ export function SubscriptionsPage({ session, onUnauthorized }: SubscriptionsPage
             </tbody>
           </table>
         </div>
+      ) : null}
+
+      {subscriptionAccess ? (
+        <section className="management-panel subscription-access-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Access export</p>
+              <h3>{subscriptionAccess.display_name}</h3>
+            </div>
+            <span className="status-badge status-active">{subscriptionAccess.protocol}</span>
+          </div>
+          <dl className="node-detail-grid">
+            <div>
+              <dt>subscription</dt>
+              <dd>{subscriptionAccess.subscription_id}</dd>
+            </div>
+            <div>
+              <dt>user</dt>
+              <dd>{subscriptionAccess.user_label || subscriptionAccess.user_id}</dd>
+            </div>
+            <div>
+              <dt>plan</dt>
+              <dd>{subscriptionAccess.plan_name}</dd>
+            </div>
+            <div>
+              <dt>node</dt>
+              <dd>{subscriptionAccess.node.name || subscriptionAccess.node.id}</dd>
+            </div>
+            <div>
+              <dt>address</dt>
+              <dd>{subscriptionAccess.endpoint.address}</dd>
+            </div>
+            <div>
+              <dt>port</dt>
+              <dd>{subscriptionAccess.endpoint.port}</dd>
+            </div>
+            <div>
+              <dt>security</dt>
+              <dd>{subscriptionAccess.endpoint.security}</dd>
+            </div>
+            <div>
+              <dt>flow</dt>
+              <dd>{subscriptionAccess.client.flow}</dd>
+            </div>
+            <div>
+              <dt>client id</dt>
+              <dd>{subscriptionAccess.client.id}</dd>
+            </div>
+          </dl>
+          <label className="field-label" htmlFor="subscription-access-uri">
+            VLESS URI
+          </label>
+          <textarea id="subscription-access-uri" className="readonly-textarea" value={subscriptionAccess.uri} readOnly rows={3} />
+        </section>
       ) : null}
     </div>
   );

@@ -15,6 +15,7 @@ Current implemented foundation:
 - users management page with list, create, update, suspend, and activate flows;
 - plans management page with list, create, update, and archive flows;
 - subscriptions management page with list, create, update, and renew flows;
+- subscriptions page can load a compact read-only access export for the single MVP VLESS Reality path;
 - nodes management page with list, detail, bootstrap token creation, drain, undrain, disable, enable, read-only config revision metadata, and rollback revision creation flows.
 
 Run from the repository root:
@@ -73,6 +74,7 @@ Planned `MVP v0.1` provider UI scope:
 - users list/create/update/suspend/activate;
 - plans list/create/update/archive;
 - subscriptions list/create/renew;
+- subscription access export inspection for the current provider-side MVP path;
 - nodes list/detail/drain/undrain/disable/enable;
 - node config revisions list/detail metadata view with applied-revision rollback action;
 - loading, empty, unauthorized, and API error states.

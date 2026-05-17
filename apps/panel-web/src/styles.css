@@ -80,7 +80,8 @@ select {
 }
 
 .select-field,
-.text-field {
+.text-field,
+.readonly-textarea {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid #cbd5e1;
@@ -91,9 +92,18 @@ select {
 }
 
 .select-field:focus,
-.text-field:focus {
+.text-field:focus,
+.readonly-textarea:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.readonly-textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .select-field {

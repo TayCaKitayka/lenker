@@ -75,6 +75,44 @@ func TestRenewSubscriptionSuccess(t *testing.T) {
 	assertAudit(t, recorder.events, audit.ActionSubscriptionRenew, audit.OutcomeSuccess)
 }
 
+func TestSubscriptionAccessSuccess(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/sub-1/access", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.Access(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"protocol":"vless-reality-xtls-vision"`) {
+		t.Fatalf("expected access export response, got %s", response.Body.String())
+	}
+	if repo.accessID != "sub-1" {
+		t.Fatalf("expected subscription id to reach repository, got %q", repo.accessID)
+	}
+}
+
+func TestSubscriptionAccessUnavailable(t *testing.T) {
+	handler := NewHandler(nil, &fakeSubscriptionsRepository{accessErr: storage.ErrSubscriptionAccessUnavailable}, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/sub-1/access", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.Access(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"code":"access_unavailable"`) {
+		t.Fatalf("expected access_unavailable error, got %s", response.Body.String())
+	}
+}
+
 func TestRenewSubscriptionValidationError(t *testing.T) {
 	handler := NewHandler(nil, &fakeSubscriptionsRepository{}, testAdminOnly)
 
@@ -92,7 +130,9 @@ func TestRenewSubscriptionValidationError(t *testing.T) {
 type fakeSubscriptionsRepository struct {
 	created    storage.CreateSubscriptionInput
 	extendDays int
+	accessID   string
 	createErr  error
+	accessErr  error
 }
 
 func (r *fakeSubscriptionsRepository) List(ctx context.Context) ([]storage.Subscription, error) {
@@ -109,6 +149,25 @@ func (r *fakeSubscriptionsRepository) Create(ctx context.Context, input storage.
 
 func (r *fakeSubscriptionsRepository) FindByID(ctx context.Context, id string) (storage.Subscription, error) {
 	return testSubscription(id), nil
+}
+
+func (r *fakeSubscriptionsRepository) Access(ctx context.Context, id string) (storage.SubscriptionAccess, error) {
+	r.accessID = id
+	if r.accessErr != nil {
+		return storage.SubscriptionAccess{}, r.accessErr
+	}
+	return storage.SubscriptionAccess{
+		ExportKind:     "subscription_access.v1alpha1",
+		SubscriptionID: id,
+		UserID:         "user-1",
+		UserLabel:      "owner@example.com",
+		PlanID:         "plan-1",
+		PlanName:       "Basic",
+		Status:         "active",
+		Protocol:       "vless-reality-xtls-vision",
+		ProtocolPath:   "vless-reality-xtls-vision",
+		URI:            "vless://sub-1@example.com:443",
+	}, nil
 }
 
 func (r *fakeSubscriptionsRepository) Update(ctx context.Context, id string, input storage.UpdateSubscriptionInput) (storage.Subscription, error) {

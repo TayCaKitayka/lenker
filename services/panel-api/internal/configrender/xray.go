@@ -15,6 +15,18 @@ const (
 
 	OperationDeploy   = "deploy"
 	OperationRollback = "rollback"
+
+	DefaultVLESSPort      = 443
+	DefaultVLESSInbound   = "vless-reality-in"
+	DefaultVLESSOutbound  = "direct"
+	DefaultVLESSFlow      = "xtls-rprx-vision"
+	DefaultRealitySNI     = "www.cloudflare.com"
+	DefaultRealityDest    = "www.cloudflare.com:443"
+	DefaultRealityShortID = "lenker00"
+	DefaultRealityPrivate = "lenker-placeholder-reality-private-key"
+	DefaultRealityPublic  = "lenker-placeholder-reality-public-key"
+	DefaultFingerprint    = "chrome"
+	DefaultSpiderX        = "/"
 )
 
 type RenderInput struct {
@@ -41,6 +53,18 @@ type SubscriptionInput struct {
 	ExpiresAt          string
 }
 
+type AccessEntry struct {
+	SubscriptionID    string
+	UserID            string
+	PlanID            string
+	VLESSClientID     string
+	Email             string
+	Flow              string
+	DeviceLimit       int
+	TrafficLimitBytes *int64
+	ExpiresAt         string
+}
+
 type RollbackInput struct {
 	RevisionNumber         int
 	RollbackTargetRevision int
@@ -49,8 +73,8 @@ type RollbackInput struct {
 }
 
 func RenderVLESSRealityPayload(input RenderInput) map[string]any {
-	inboundTag := "vless-reality-in"
-	outboundTag := "direct"
+	inboundTag := DefaultVLESSInbound
+	outboundTag := DefaultVLESSOutbound
 	subscriptionInputs := sortedSubscriptionInputs(input.SubscriptionInputs)
 	accessEntries := renderAccessEntries(subscriptionInputs)
 	subscriptionSummary := renderSubscriptionSummary(subscriptionInputs)
@@ -102,7 +126,7 @@ func RenderVLESSRealityPayload(input RenderInput) map[string]any {
 				map[string]any{
 					"tag":      inboundTag,
 					"listen":   "0.0.0.0",
-					"port":     443,
+					"port":     DefaultVLESSPort,
 					"protocol": "vless",
 					"settings": map[string]any{
 						"clients":    renderClients(accessEntries),
@@ -114,11 +138,11 @@ func RenderVLESSRealityPayload(input RenderInput) map[string]any {
 						"security": "reality",
 						"realitySettings": map[string]any{
 							"show":         false,
-							"dest":         "www.cloudflare.com:443",
+							"dest":         DefaultRealityDest,
 							"xver":         0,
-							"serverNames":  []any{"www.cloudflare.com"},
-							"privateKey":   "lenker-placeholder-reality-private-key",
-							"shortIds":     []any{"lenker00"},
+							"serverNames":  []any{DefaultRealitySNI},
+							"privateKey":   DefaultRealityPrivate,
+							"shortIds":     []any{DefaultRealityShortID},
 							"minClientVer": "",
 							"maxClientVer": "",
 							"maxTimeDiff":  0,
@@ -234,24 +258,39 @@ func renderSubscriptionSummary(inputs []SubscriptionInput) []any {
 func renderAccessEntries(inputs []SubscriptionInput) []any {
 	result := make([]any, 0, len(inputs))
 	for _, input := range inputs {
+		access := BuildAccessEntry(input)
 		entry := map[string]any{
-			"subscription_id": input.SubscriptionID,
-			"user_id":         input.UserID,
-			"plan_id":         input.PlanID,
-			"vless_client_id": input.SubscriptionID,
-			"email":           fmt.Sprintf("subscription:%s", input.SubscriptionID),
-			"flow":            "xtls-rprx-vision",
-			"device_limit":    input.DeviceLimit,
-			"expires_at":      input.ExpiresAt,
+			"subscription_id": access.SubscriptionID,
+			"user_id":         access.UserID,
+			"plan_id":         access.PlanID,
+			"vless_client_id": access.VLESSClientID,
+			"email":           access.Email,
+			"flow":            access.Flow,
+			"device_limit":    access.DeviceLimit,
+			"expires_at":      access.ExpiresAt,
 		}
-		if input.TrafficLimitBytes != nil {
-			entry["traffic_limit_bytes"] = *input.TrafficLimitBytes
+		if access.TrafficLimitBytes != nil {
+			entry["traffic_limit_bytes"] = *access.TrafficLimitBytes
 		} else {
 			entry["traffic_limit_bytes"] = nil
 		}
 		result = append(result, entry)
 	}
 	return result
+}
+
+func BuildAccessEntry(input SubscriptionInput) AccessEntry {
+	return AccessEntry{
+		SubscriptionID:    input.SubscriptionID,
+		UserID:            input.UserID,
+		PlanID:            input.PlanID,
+		VLESSClientID:     input.SubscriptionID,
+		Email:             fmt.Sprintf("subscription:%s", input.SubscriptionID),
+		Flow:              DefaultVLESSFlow,
+		DeviceLimit:       input.DeviceLimit,
+		TrafficLimitBytes: input.TrafficLimitBytes,
+		ExpiresAt:         input.ExpiresAt,
+	}
 }
 
 func renderClients(accessEntries []any) []any {

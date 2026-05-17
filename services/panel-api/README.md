@@ -31,6 +31,7 @@ Current foundation:
 - node registration with token expiry and one-time token consumption
 - node heartbeat status and `last_seen_at` updates
 - config revision metadata storage with deterministic signed subscription-aware VLESS Reality Xray config skeleton payloads
+- provider-side subscription access export foundation for the single VLESS Reality MVP path
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -69,6 +70,7 @@ Implemented foundation routes:
 - `GET /api/v1/subscriptions/{id}`
 - `PATCH /api/v1/subscriptions/{id}`
 - `POST /api/v1/subscriptions/{id}/renew`
+- `GET /api/v1/subscriptions/{id}/access`
 - `GET /api/v1/nodes`
 - `POST /api/v1/nodes/bootstrap-token`
 - `GET /api/v1/nodes/{id}`
@@ -118,6 +120,15 @@ not imply that panel-api starts, reloads, restarts, or supervises Xray.
 Heartbeat and revision reports may also carry a compact `runtime_events` slice;
 panel-api stores only a bounded recent trail on the node record.
 
+Subscription access export:
+
+- `GET /api/v1/subscriptions/{id}/access` is admin-only.
+- It returns a deterministic `subscription_access.v1alpha1` object and VLESS URI
+  for the single MVP `VLESS + Reality + XTLS Vision` path.
+- The export is provider-side foundation work only; it is not full end-user app
+  authentication, device management, marketplace delivery, or multi-protocol
+  export.
+
 Use the token returned by admin login:
 
 ```http
@@ -138,7 +149,7 @@ Not included here yet:
 - 2FA
 - RBAC permission engine
 - audit persistence
-- devices, key rotation, and export flows
+- devices, key rotation, and end-user client delivery flows
 - full node orchestration engine
 - full mTLS or certificate rotation
 - real Xray process restart/control or rollback executor

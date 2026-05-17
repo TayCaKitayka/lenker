@@ -164,9 +164,22 @@ Clear or revoke bound devices for the subscription.
 
 Return current and recent usage data.
 
-#### `GET /subscriptions/{subscriptionId}/export`
+#### `GET /subscriptions/{subscriptionId}/access`
 
-Return export metadata for the supported client path.
+Return provider-side access export metadata for the supported client path.
+
+Current implementation note:
+
+The implemented first product-layer slice exposes an admin-only read model for
+an active subscription. It derives a deterministic
+`subscription_access.v1alpha1` payload for the single MVP path,
+`VLESS + Reality + XTLS Vision`, using the existing subscription, user, plan,
+and node tables. The MVP node-selection rule chooses the first active,
+non-draining node with a hostname that matches the subscription
+`preferred_region` when one is set; otherwise it uses stable ordering by region,
+name, and id. The response includes a structured endpoint/client payload and a
+minimal VLESS URI. It is not an end-user auth flow, device-management flow,
+marketplace export, or multi-protocol delivery system.
 
 Conservative note:
 

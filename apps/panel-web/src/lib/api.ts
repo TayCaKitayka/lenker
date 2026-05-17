@@ -30,6 +30,10 @@ interface SubscriptionResponse {
   data: Subscription;
 }
 
+interface SubscriptionAccessResponse {
+  data: SubscriptionAccess;
+}
+
 interface NodeListResponse {
   data?: NodeSummary[] | null;
 }
@@ -110,6 +114,49 @@ export interface Subscription {
   device_limit: number;
   preferred_region: string | null;
 }
+
+export interface SubscriptionAccess {
+  export_kind: string;
+  subscription_id: string;
+  user_id: string;
+  user_label: string;
+  plan_id: string;
+  plan_name: string;
+  status: string;
+  protocol: string;
+  protocol_path: string;
+  node: {
+    id: string;
+    name: string;
+    region: string;
+    country_code: string;
+    hostname: string;
+    status: string;
+    drain_state: string;
+    active_revision: number;
+  };
+  endpoint: {
+    address: string;
+    port: number;
+    network: string;
+    security: string;
+    sni: string;
+    public_key: string;
+    short_id: string;
+    fingerprint: string;
+    spider_x: string;
+  };
+  client: {
+    id: string;
+    email: string;
+    flow: string;
+    level: number;
+    plan_id: string;
+  };
+  display_name: string;
+  uri: string;
+}
+
 
 export interface CreateSubscriptionInput {
   user_id: string;
@@ -359,6 +406,14 @@ export async function renewSubscription(
       method: "POST",
       body: input,
     },
+  );
+  return payload.data;
+}
+
+export async function getSubscriptionAccess(session: StoredSession, subscriptionID: string): Promise<SubscriptionAccess> {
+  const payload = await authorizedRequest<SubscriptionAccessResponse>(
+    session,
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionID)}/access`,
   );
   return payload.data;
 }

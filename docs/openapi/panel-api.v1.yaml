@@ -353,6 +353,31 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/subscriptions/{id}/access:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    get:
+      tags: [Subscriptions]
+      summary: Get provider-side subscription access export
+      responses:
+        "200":
+          description: Subscription access export for the single MVP VLESS Reality path.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionAccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Subscription access export is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/subscriptions/{id}/renew:
     parameters:
       - $ref: "#/components/parameters/ID"
@@ -1067,6 +1092,119 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Subscription"
+    SubscriptionAccess:
+      type: object
+      required:
+        - export_kind
+        - subscription_id
+        - user_id
+        - user_label
+        - plan_id
+        - plan_name
+        - status
+        - protocol
+        - protocol_path
+        - node
+        - endpoint
+        - client
+        - display_name
+        - uri
+      properties:
+        export_kind:
+          type: string
+          enum: [subscription_access.v1alpha1]
+        subscription_id:
+          type: string
+        user_id:
+          type: string
+        user_label:
+          type: string
+        plan_id:
+          type: string
+        plan_name:
+          type: string
+        status:
+          type: string
+          enum: [active]
+        protocol:
+          type: string
+          enum: [vless-reality-xtls-vision]
+        protocol_path:
+          type: string
+          enum: [vless-reality-xtls-vision]
+        node:
+          type: object
+          required: [id, name, region, country_code, hostname, status, drain_state, active_revision]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            region:
+              type: string
+            country_code:
+              type: string
+            hostname:
+              type: string
+            status:
+              type: string
+              enum: [active]
+            drain_state:
+              type: string
+              enum: [active]
+            active_revision:
+              type: integer
+        endpoint:
+          type: object
+          required: [address, port, network, security, sni, public_key, short_id, fingerprint, spider_x]
+          properties:
+            address:
+              type: string
+            port:
+              type: integer
+              minimum: 1
+            network:
+              type: string
+              enum: [tcp]
+            security:
+              type: string
+              enum: [reality]
+            sni:
+              type: string
+            public_key:
+              type: string
+            short_id:
+              type: string
+            fingerprint:
+              type: string
+            spider_x:
+              type: string
+        client:
+          type: object
+          required: [id, email, flow, level, plan_id]
+          properties:
+            id:
+              type: string
+            email:
+              type: string
+            flow:
+              type: string
+              enum: [xtls-rprx-vision]
+            level:
+              type: integer
+            plan_id:
+              type: string
+        display_name:
+          type: string
+        uri:
+          type: string
+    SubscriptionAccessEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SubscriptionAccess"
     CreateSubscriptionRequest:
       type: object
       required: [user_id, plan_id]

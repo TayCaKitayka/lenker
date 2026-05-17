@@ -37,6 +37,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/subscriptions/{id}", h.adminOnly(http.HandlerFunc(h.Get)))
 	mux.Handle("PATCH /api/v1/subscriptions/{id}", h.adminOnly(http.HandlerFunc(h.Update)))
 	mux.Handle("POST /api/v1/subscriptions/{id}/renew", h.adminOnly(http.HandlerFunc(h.Renew)))
+	mux.Handle("GET /api/v1/subscriptions/{id}/access", h.adminOnly(http.HandlerFunc(h.Access)))
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +97,15 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: subscription})
+}
+
+func (h *Handler) Access(w http.ResponseWriter, r *http.Request) {
+	access, err := h.subscriptions.Access(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: access})
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +200,18 @@ func (h *Handler) record(r *http.Request, action string, resourceID string, outc
 func writeResourceError(w http.ResponseWriter, err error, resource string) {
 	if errors.Is(err, storage.ErrNotFound) {
 		httpapi.WriteNotFound(w, resource)
+		return
+	}
+	httpapi.WriteStorageError(w)
+}
+
+func writeSubscriptionAccessError(w http.ResponseWriter, err error) {
+	if errors.Is(err, storage.ErrNotFound) {
+		httpapi.WriteNotFound(w, "subscription")
+		return
+	}
+	if errors.Is(err, storage.ErrSubscriptionAccessUnavailable) {
+		httpapi.WriteError(w, http.StatusConflict, "access_unavailable", "subscription access export is unavailable")
 		return
 	}
 	httpapi.WriteStorageError(w)
