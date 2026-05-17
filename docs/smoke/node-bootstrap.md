@@ -370,7 +370,78 @@ Expected result:
 - `data.active_revision` matches the reported metadata revision.
 - `data.last_validation_status` is `applied`.
 
-## 10. Drain And Undrain
+## 10. Runtime Event Ingestion Check
+
+This check verifies the durable recent `runtime_events` path in the local stack.
+It uses the existing heartbeat/report ingestion contracts; it does not add a new
+admin workflow or backend feature.
+
+If node-agent is running in the Docker profile, first inspect local agent status:
+
+```sh
+curl -s http://localhost:8090/status
+```
+
+Expected result after at least one apply/fail/process-intent event:
+
+- `runtime_events` is present;
+- each event has a compact `type`, `at`, optional `status`, optional
+  `revision_number`, and optional `message`;
+- no node token, bootstrap token, or config secret is present.
+
+To force a minimal heartbeat ingestion check with a synthetic recent event:
+
+```sh
+export LENKER_EVENT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+curl -s http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/heartbeat \
+  -H "Authorization: Bearer $LENKER_NODE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"node_id\":\"$LENKER_NODE_ID\",\"agent_version\":\"0.1.0-dev\",\"status\":\"active\",\"active_revision\":1,\"last_validation_status\":\"applied\",\"last_validation_at\":\"$LENKER_EVENT_AT\",\"last_applied_revision\":1,\"active_config_path\":\"/var/lib/lenker/node-agent/active/config.json\",\"runtime_events\":[{\"type\":\"apply_success\",\"status\":\"applied\",\"revision_number\":1,\"message\":\"smoke runtime event\",\"runtime_mode\":\"no-process\",\"runtime_process_mode\":\"disabled\",\"runtime_process_state\":\"disabled\",\"at\":\"$LENKER_EVENT_AT\"}]}"
+```
+
+Expected result:
+
+- heartbeat response includes `data.runtime_events`;
+- the newest event has `type=apply_success`;
+- panel-api stores only the bounded recent event slice for this node.
+
+To verify report ingestion instead of heartbeat ingestion, report a pending
+revision with the same compact slice:
+
+```sh
+curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/config-revisions/$LENKER_REVISION_ID/report \
+  -H "Authorization: Bearer $LENKER_NODE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"status\":\"applied\",\"active_revision\":1,\"runtime_events\":[{\"type\":\"apply_success\",\"status\":\"applied\",\"revision_number\":1,\"message\":\"smoke report runtime event\",\"runtime_mode\":\"no-process\",\"runtime_process_mode\":\"disabled\",\"runtime_process_state\":\"disabled\",\"at\":\"$LENKER_EVENT_AT\"}]}"
+```
+
+Then inspect the admin node detail API:
+
+```sh
+curl -s http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID \
+  -H "Authorization: Bearer $LENKER_ADMIN_TOKEN"
+```
+
+Expected result:
+
+- `data.runtime_events` is present;
+- the slice contains the recent event sent by heartbeat or report;
+- the event message stays compact;
+- repeated heartbeats/reports keep only the newest bounded slice.
+
+Panel-web verification:
+
+1. Start panel-web with `npm run panel-web:dev`.
+2. Open `http://localhost:5173`.
+3. Login as admin and open Nodes.
+4. Select the node.
+5. In Node detail, the Runtime events block shows the recent event type,
+   timestamp, status/result, revision, runtime mode, and compact message.
+
+If `runtime_events` is empty, panel-web should show `No runtime events yet.`
+
+## 11. Drain And Undrain
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/drain \
@@ -391,7 +462,7 @@ Expected result:
 
 - `data.drain_state` is `active`.
 
-## 11. Disable And Enable
+## 12. Disable And Enable
 
 ```sh
 curl -s -X POST http://localhost:8080/api/v1/nodes/$LENKER_NODE_ID/disable \
