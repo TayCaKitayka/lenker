@@ -140,10 +140,20 @@ host-installed Xray binary, mount the directory that contains it and point the
 agent at the container path:
 
 ```sh
+# Inspect the exports for the Xray binary Docker bind mount.
+make docker-xray-dry-run-env
+
+# Then run the printed exports, for example:
 export LENKER_LOCAL_XRAY_DIR="$(dirname "$(command -v xray)")"
-export LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/xray
+export LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/$(basename "$(command -v xray)")
 make docker-up
 ```
+
+If the binary is not named `xray` or is outside `PATH`, use
+`XRAY_BIN=/absolute/path/to/xray make docker-xray-dry-run-env`; the target only
+prints the required exports, verifies the binary is executable, and does not
+start Docker. After `make docker-up`, `curl -s http://localhost:8090/status`
+should include `"xray_dry_run_enabled":true`.
 
 `LENKER_LOCAL_XRAY_DIR` is only a local bind-mount source for
 `deploy/docker/docker-compose.local.yml`; no Xray binary is downloaded or baked
@@ -171,6 +181,10 @@ with a concise `error_message` such as
 The agent also exposes the latest runtime readiness metadata in `/status` and
 heartbeat/report payloads: `last_validation_status`, `last_validation_error`,
 `last_validation_at`, `last_applied_revision`, and `active_config_path`.
+For a successful real-binary dry-run apply, expected signals are
+`xray_dry_run_enabled=true`, `last_validation_status=applied`, an empty
+`last_validation_error`, a non-zero `last_applied_revision`, and an
+`active_config_path` under the agent state directory.
 
 Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 

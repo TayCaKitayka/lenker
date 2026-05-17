@@ -6,7 +6,7 @@ OPENAPI_SPEC ?= docs/openapi/panel-api.v1.yaml
 DOCKER_COMPOSE ?= docker compose
 DOCKER_COMPOSE_FILE ?= deploy/docker/docker-compose.local.yml
 
-.PHONY: migrate-up migrate-down migrate-force bootstrap-admin run-panel-api run-node-agent test-panel-api test-node-agent openapi-lint validate-openapi test docker-build docker-up docker-down docker-logs docker-ps docker-bootstrap-admin docker-smoke
+.PHONY: migrate-up migrate-down migrate-force bootstrap-admin run-panel-api run-node-agent test-panel-api test-node-agent openapi-lint validate-openapi test docker-build docker-up docker-down docker-logs docker-ps docker-bootstrap-admin docker-smoke docker-xray-dry-run-env
 
 migrate-up:
 	@if [ -z "$$LENKER_DATABASE_URL" ]; then echo "LENKER_DATABASE_URL is required"; exit 1; fi
@@ -65,3 +65,19 @@ docker-bootstrap-admin:
 docker-smoke:
 	curl -fsS http://localhost:8080/healthz
 	curl -fsS http://localhost:8090/healthz
+
+docker-xray-dry-run-env:
+	@xray_bin="$${XRAY_BIN:-$$(command -v xray 2>/dev/null || true)}"; \
+	if [ -z "$$xray_bin" ]; then \
+		echo "xray binary not found. Install it locally or run: XRAY_BIN=/absolute/path/to/xray make docker-xray-dry-run-env"; \
+		exit 1; \
+	fi; \
+	if [ ! -x "$$xray_bin" ]; then \
+		echo "xray binary is not executable: $$xray_bin"; \
+		exit 1; \
+	fi; \
+	xray_dir="$$(dirname "$$xray_bin")"; \
+	xray_name="$$(basename "$$xray_bin")"; \
+	echo "export LENKER_LOCAL_XRAY_DIR=$$xray_dir"; \
+	echo "export LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/$$xray_name"; \
+	echo "make docker-up"

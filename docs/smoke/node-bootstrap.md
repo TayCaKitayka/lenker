@@ -209,17 +209,43 @@ If a local Xray binary is already installed, opt in explicitly without
 downloading or baking it into the image:
 
 ```sh
+# Inspect the exports for the Xray binary Docker bind mount.
+make docker-xray-dry-run-env
+
+# Then run the printed exports, for example:
 export LENKER_LOCAL_XRAY_DIR="$(dirname "$(command -v xray)")"
-export LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/xray
+export LENKER_AGENT_XRAY_BIN=/opt/lenker/xray/$(basename "$(command -v xray)")
 make docker-up
 ```
 
+`make docker-xray-dry-run-env` is a helper: it checks `command -v xray`, or
+`XRAY_BIN=/absolute/path/to/xray`, and prints the two exports plus
+`make docker-up`. It verifies that the binary is executable, does not download
+Xray, and does not start Docker.
+
 The compose file bind-mounts `$LENKER_LOCAL_XRAY_DIR` to `/opt/lenker/xray`.
-`GET http://localhost:8090/status` should show
-`"xray_dry_run_enabled":true`. A successful pending revision apply then proves
-the candidate passed `xray run -test -config <candidate>` before staged ->
-active. To verify the failure path, set `LENKER_AGENT_XRAY_BIN` to a missing
-path and create a new revision; the revision should report `failed` with
+After startup, confirm the optional boundary is active:
+
+```sh
+curl -s http://localhost:8090/status
+```
+
+Expected signals before creating/applying a revision:
+
+- `xray_dry_run_enabled` is `true`;
+- `last_validation_status` may be empty if no revision has been applied yet.
+
+A successful pending revision apply then proves the candidate passed
+`xray run -test -config <candidate>` before staged -> active. Expected signals
+after apply:
+
+- `last_validation_status` is `applied`;
+- `last_validation_error` is empty;
+- `last_applied_revision` and `active_revision` match the applied revision;
+- `active_config_path` points to the active config artifact.
+
+To verify the missing-binary failure path, set `LENKER_AGENT_XRAY_BIN` to a
+missing path and create a new revision; the revision should report `failed` with
 `xray_dry_run_failed:xray_binary_not_found`, while the previous active config
 remains unchanged.
 
