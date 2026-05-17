@@ -423,6 +423,24 @@ missing binary. Expected result:
 - runtime readiness moves to `validation_failed`;
 - persisted `runtime_events` include `dry_run_failure`.
 
+For the scripted subscription access export path, run:
+
+```sh
+make docker-subscription-access-smoke
+```
+
+The helper starts the same local stack, bootstraps admin auth, creates a user,
+plan, active subscription, and active node in a unique smoke region, creates a
+subscription-aware config revision, waits for node-agent polling apply/report,
+then calls `GET /api/v1/subscriptions/{id}/access`. It verifies:
+
+- the access endpoint returns `subscription_access.v1alpha1`;
+- the selected access node is the same active node whose config was applied;
+- the revision bundle and active `config.json` contain the exported
+  subscription/client entry;
+- endpoint network/security/SNI/short id/port match the active config;
+- the deterministic VLESS URI matches the structured endpoint/client fields.
+
 If node-agent is running in the Docker profile, first inspect local agent status:
 
 ```sh
