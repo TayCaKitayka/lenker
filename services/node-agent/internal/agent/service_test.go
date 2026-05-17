@@ -50,6 +50,21 @@ func TestRegisteredIdentityStartsActive(t *testing.T) {
 	if status.RuntimeMode != RuntimeModeDryRunOnly || status.RuntimeState != RuntimeStateNotPrepared || status.RuntimeDesiredState != RuntimeDesiredStateConfigReady {
 		t.Fatalf("expected dry-run-only no-process runtime skeleton state, got %#v", status)
 	}
+	if status.RuntimeProcessMode != RuntimeProcessModeDisabled || status.RuntimeProcessState != RuntimeProcessStateDisabled {
+		t.Fatalf("expected process control disabled by default, got %#v", status)
+	}
+}
+
+func TestLocalRuntimeProcessModeStartsFutureManagedSkeleton(t *testing.T) {
+	service := NewService(Identity{NodeID: "node-1", ProcessMode: RuntimeProcessModeLocal})
+
+	status := service.Status()
+	if status.RuntimeMode != RuntimeModeFuture {
+		t.Fatalf("expected future process-managed runtime mode, got %#v", status)
+	}
+	if status.RuntimeProcessMode != RuntimeProcessModeLocal || status.RuntimeProcessState != RuntimeProcessStateDisabled {
+		t.Fatalf("expected local process mode with no prepared process state, got %#v", status)
+	}
 }
 
 func TestBuildHeartbeatPayloadRequiresNodeID(t *testing.T) {
@@ -70,6 +85,8 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	service.status.LastAppliedRevision = 3
 	service.status.ConfigArtifactPath = "/var/lib/lenker/node-agent/active/config.json"
 	service.status.RuntimeMode = RuntimeModeNoProcess
+	service.status.RuntimeProcessMode = RuntimeProcessModeDisabled
+	service.status.RuntimeProcessState = RuntimeProcessStateDisabled
 	service.status.RuntimeDesiredState = RuntimeDesiredStateConfigReady
 	service.status.RuntimeState = RuntimeStateActiveConfigReady
 	service.status.LastDryRunStatus = DryRunStatusNotConfigured
@@ -95,6 +112,9 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	}
 	if payload.RuntimeMode != RuntimeModeNoProcess || payload.RuntimeState != RuntimeStateActiveConfigReady || payload.LastRuntimePrepared != 3 {
 		t.Fatalf("expected runtime supervisor metadata in heartbeat: %#v", payload)
+	}
+	if payload.RuntimeProcessMode != RuntimeProcessModeDisabled || payload.RuntimeProcessState != RuntimeProcessStateDisabled {
+		t.Fatalf("expected runtime process metadata in heartbeat: %#v", payload)
 	}
 }
 
@@ -377,6 +397,9 @@ func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
 	if service.Status().RuntimeState != RuntimeStateActiveConfigReady || service.Status().LastRuntimeAttemptStatus != RuntimeAttemptSkipped {
 		t.Fatalf("expected active config ready runtime state: %#v", service.Status())
 	}
+	if service.Status().RuntimeProcessMode != RuntimeProcessModeDisabled || service.Status().RuntimeProcessState != RuntimeProcessStateDisabled {
+		t.Fatalf("expected disabled process mode after apply: %#v", service.Status())
+	}
 	if service.Status().LastValidationStatus != "applied" || !service.Status().LastValidationAt.Equal(now) {
 		t.Fatalf("expected applied validation status: %#v", service.Status())
 	}
@@ -418,6 +441,73 @@ func TestPollPendingConfigRevisionDryRunSuccessContinuesApply(t *testing.T) {
 	}
 	if service.Status().RuntimeMode != RuntimeModeDryRunOnly || service.Status().LastDryRunStatus != DryRunStatusPassed {
 		t.Fatalf("expected dry-run-only runtime success state: %#v", service.Status())
+	}
+}
+
+func TestPollPendingConfigRevisionLocalProcessModeUsesRunnerSkeleton(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	runner := &fakeRuntimeProcessRunner{}
+	service := NewService(
+		Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: t.TempDir(), ProcessMode: RuntimeProcessModeLocal},
+		WithRuntimeProcessRunner(runner),
+	)
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if err != nil {
+		t.Fatalf("expected local process skeleton apply: %v", err)
+	}
+	if !applied {
+		t.Fatalf("expected revision applied")
+	}
+	if !runner.called || runner.revisionNumber != 4 || runner.configPath == "" {
+		t.Fatalf("expected local process runner prepare intent, got %#v", runner)
+	}
+	status := service.Status()
+	if status.RuntimeMode != RuntimeModeFuture || status.RuntimeProcessMode != RuntimeProcessModeLocal || status.RuntimeProcessState != RuntimeProcessStateReady {
+		t.Fatalf("expected local process runtime status: %#v", status)
+	}
+	if status.LastRuntimeAttemptStatus != RuntimeAttemptReady {
+		t.Fatalf("expected ready process attempt, got %#v", status)
+	}
+	if !client.reported || client.report.RuntimeProcessMode != RuntimeProcessModeLocal || client.report.RuntimeProcessState != RuntimeProcessStateReady {
+		t.Fatalf("expected local process metadata in report, got %#v", client.report)
+	}
+	stateBody, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(status.ConfigArtifactPath)), "state.json"))
+	if err != nil {
+		t.Fatalf("expected state artifact: %v", err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(stateBody, &state); err != nil {
+		t.Fatalf("expected state json: %v", err)
+	}
+	if state["runtime_process_mode"] != RuntimeProcessModeLocal || state["runtime_process_state"] != RuntimeProcessStateReady || state["process_control"] != "local-skeleton" {
+		t.Fatalf("expected local process state artifact, got %#v", state)
+	}
+}
+
+func TestPollPendingConfigRevisionDisabledProcessModeDoesNotCallRunner(t *testing.T) {
+	revision := signedTestConfigRevision(t, "node-1", 4, 3)
+	client := &fakePendingConfigRevisionClient{revision: revision, ok: true}
+	runner := &fakeRuntimeProcessRunner{}
+	service := NewService(
+		Identity{NodeID: "node-1", NodeToken: "node-token", StateDir: t.TempDir(), ProcessMode: RuntimeProcessModeDisabled},
+		WithRuntimeProcessRunner(runner),
+	)
+
+	applied, err := service.PollPendingConfigRevision(context.Background(), client, time.Now())
+	if err != nil {
+		t.Fatalf("expected no-process apply: %v", err)
+	}
+	if !applied {
+		t.Fatalf("expected revision applied")
+	}
+	if runner.called {
+		t.Fatalf("disabled process mode must not call local runner")
+	}
+	status := service.Status()
+	if status.RuntimeMode != RuntimeModeNoProcess || status.RuntimeProcessMode != RuntimeProcessModeDisabled || status.RuntimeProcessState != RuntimeProcessStateDisabled {
+		t.Fatalf("expected disabled process runtime status: %#v", status)
 	}
 }
 
@@ -677,6 +767,9 @@ func TestApplyConfigRevisionWritesLocalArtifacts(t *testing.T) {
 	}
 	if state["runtime_mode"] != RuntimeModeNoProcess || state["runtime_state"] != RuntimeStateActiveConfigReady || state["process_control"] != "unavailable" {
 		t.Fatalf("expected runtime state in state artifact: %#v", state)
+	}
+	if state["runtime_process_mode"] != RuntimeProcessModeDisabled || state["runtime_process_state"] != RuntimeProcessStateDisabled {
+		t.Fatalf("expected runtime process state in state artifact: %#v", state)
 	}
 }
 
@@ -1074,6 +1167,27 @@ type fakeXrayDryRunValidator struct {
 	configPath string
 	configBody []byte
 	err        error
+}
+
+type fakeRuntimeProcessRunner struct {
+	called         bool
+	revisionNumber int
+	configPath     string
+	err            error
+}
+
+func (r *fakeRuntimeProcessRunner) PrepareStart(ctx context.Context, request RuntimeProcessRequest) (RuntimeProcessResult, error) {
+	r.called = true
+	r.revisionNumber = request.Revision.RevisionNumber
+	r.configPath = request.Artifact.ConfigPath
+	if r.err != nil {
+		return RuntimeProcessResult{}, r.err
+	}
+	return RuntimeProcessResult{
+		ProcessState: RuntimeProcessStateReady,
+		Attempt:      RuntimeAttemptReady,
+		At:           request.At,
+	}, nil
 }
 
 func (v *fakeXrayDryRunValidator) Validate(ctx context.Context, configPath string) error {

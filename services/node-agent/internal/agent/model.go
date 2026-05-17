@@ -18,6 +18,7 @@ type Identity struct {
 	PanelURL       string `json:"panel_url,omitempty"`
 	StateDir       string `json:"-"`
 	XrayBin        string `json:"-"`
+	ProcessMode    string `json:"-"`
 }
 
 type Status struct {
@@ -28,6 +29,8 @@ type Status struct {
 	LastHeartbeatAt           time.Time `json:"last_heartbeat_at,omitempty"`
 	XrayDryRunEnabled         bool      `json:"xray_dry_run_enabled"`
 	RuntimeMode               string    `json:"runtime_mode"`
+	RuntimeProcessMode        string    `json:"runtime_process_mode"`
+	RuntimeProcessState       string    `json:"runtime_process_state"`
 	RuntimeDesiredState       string    `json:"runtime_desired_state"`
 	RuntimeState              string    `json:"runtime_state"`
 	LastDryRunStatus          string    `json:"last_dry_run_status,omitempty"`
@@ -68,6 +71,8 @@ type HeartbeatPayload struct {
 	Status               string    `json:"status"`
 	ActiveRevision       int       `json:"active_revision"`
 	RuntimeMode          string    `json:"runtime_mode,omitempty"`
+	RuntimeProcessMode   string    `json:"runtime_process_mode,omitempty"`
+	RuntimeProcessState  string    `json:"runtime_process_state,omitempty"`
 	RuntimeDesiredState  string    `json:"runtime_desired_state,omitempty"`
 	RuntimeState         string    `json:"runtime_state,omitempty"`
 	LastDryRunStatus     string    `json:"last_dry_run_status,omitempty"`
@@ -104,6 +109,8 @@ type ConfigRevisionReport struct {
 	ErrorMessage         string    `json:"error_message,omitempty"`
 	ActiveRevision       int       `json:"active_revision,omitempty"`
 	RuntimeMode          string    `json:"runtime_mode,omitempty"`
+	RuntimeProcessMode   string    `json:"runtime_process_mode,omitempty"`
+	RuntimeProcessState  string    `json:"runtime_process_state,omitempty"`
 	RuntimeDesiredState  string    `json:"runtime_desired_state,omitempty"`
 	RuntimeState         string    `json:"runtime_state,omitempty"`
 	LastDryRunStatus     string    `json:"last_dry_run_status,omitempty"`

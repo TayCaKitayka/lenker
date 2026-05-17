@@ -186,13 +186,16 @@ report and heartbeat contracts so panel admins can inspect the latest local
 validation result.
 
 Node-agent also has a no-process runtime supervisor skeleton. It tracks
-`runtime_mode`, desired runtime state, latest runtime state, dry-run status,
-last prepared revision, transition timestamp, and compact runtime error. The
-default mode records that a validated config is active on disk but that no Xray
-daemon is launched or supervised. With `LENKER_AGENT_XRAY_BIN`, the mode is
+`runtime_mode`, `runtime_process_mode`, `runtime_process_state`, desired
+runtime state, latest runtime state, dry-run status, last prepared revision,
+transition timestamp, and compact runtime error. The default process mode is
+`disabled`: a validated config can become active on disk, but no Xray daemon is
+launched or supervised. With `LENKER_AGENT_XRAY_BIN`, the runtime mode is
 `dry-run-only`: the one-shot Xray validation must pass before local state moves
-to `active_config_ready`. No Xray daemon, reload, restart, process watchdog, or
-systemd integration is controlled by this layer, and the dev profile does not
+to `active_config_ready`. `LENKER_AGENT_RUNTIME_PROCESS_MODE=local` only enables
+a fakeable prepare/start intent boundary for a future local runner and reports
+`future-process-managed`; it does not implement daemon lifecycle, reload,
+restart, process watchdog, or systemd integration. The dev profile does not
 download or bake Xray into images.
 
 ### Boundary 3: User App to Panel

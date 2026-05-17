@@ -91,6 +91,8 @@ func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
 		"",
 		4,
 		"dry-run-only",
+		"local",
+		"failed",
 		"validated-config-ready",
 		"validation_failed",
 		"failed",
@@ -122,6 +124,9 @@ func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
 	}
 	if node.RuntimeMode != "dry-run-only" || node.RuntimeState != "validation_failed" || node.LastDryRunStatus != "failed" {
 		t.Fatalf("unexpected runtime supervisor metadata: %#v", node)
+	}
+	if node.RuntimeProcessMode != "local" || node.RuntimeProcessState != "failed" {
+		t.Fatalf("unexpected runtime process metadata: %#v", node)
 	}
 	if node.LastRuntimeAt == nil || !node.LastRuntimeAt.Equal(now) || node.LastRuntimePrepared != 3 {
 		t.Fatalf("unexpected runtime transition metadata: %#v", node)

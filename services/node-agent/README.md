@@ -39,6 +39,7 @@ Configuration:
 - `LENKER_AGENT_HEARTBEAT_INTERVAL`
 - `LENKER_AGENT_CONFIG_POLL_INTERVAL`
 - `LENKER_AGENT_XRAY_BIN`
+- `LENKER_AGENT_RUNTIME_PROCESS_MODE`
 - `LENKER_AGENT_TLS_ENABLED`
 
 Local run:
@@ -196,9 +197,22 @@ unavailable by design. If `LENKER_AGENT_XRAY_BIN` is configured, the runtime
 mode becomes `dry-run-only`; the candidate must pass the one-shot Xray dry-run
 before the active file switch is reported as prepared.
 
+`LENKER_AGENT_RUNTIME_PROCESS_MODE` is an explicit opt-in gate for the future
+local Xray process runner boundary:
+
+- `disabled` is the default. The agent never attempts process control; apply
+  still means validation plus staged -> active files ready on disk.
+- `local` enables only a fakeable local runner skeleton. It records a
+  prepare/start intent after active files are ready and reports the process
+  capability as ready, but it does not launch a long-running Xray daemon,
+  reload, restart, watch, or integrate with systemd.
+
 Read-only runtime fields in `/status`, heartbeat, and revision reports:
 
-- `runtime_mode`: `no-process` or `dry-run-only`
+- `runtime_mode`: `no-process`, `dry-run-only`, or
+  `future-process-managed`
+- `runtime_process_mode`: `disabled` or `local`
+- `runtime_process_state`: `disabled`, `ready`, or `failed`
 - `runtime_desired_state`: currently `validated-config-ready`
 - `runtime_state`: `not_prepared`, `active_config_ready`, `validation_failed`,
   or `prepare_failed`

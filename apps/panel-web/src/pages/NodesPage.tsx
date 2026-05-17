@@ -583,6 +583,8 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
 
             <dl className="runtime-status-grid">
               <DetailItem label="Runtime mode" value={selectedNode.runtime_mode || "no-process"} />
+              <DetailItem label="Process mode" value={selectedNode.runtime_process_mode || "disabled"} />
+              <DetailItem label="Process state" value={selectedNode.runtime_process_state || "disabled"} />
               <DetailItem label="Runtime desired state" value={selectedNode.runtime_desired_state || "validated-config-ready"} />
               <DetailItem label="Runtime state" value={selectedNode.runtime_state || "not prepared"} />
               <DetailItem label="Dry-run status" value={selectedNode.last_dry_run_status || "not configured"} />

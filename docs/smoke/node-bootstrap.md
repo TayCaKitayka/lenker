@@ -272,14 +272,22 @@ The node detail response also exposes read-only runtime readiness metadata after
 apply/failure: `last_validation_status`, `last_validation_error`,
 `last_validation_at`, `last_applied_revision`, and `active_config_path`.
 It also exposes the runtime supervisor skeleton state:
-`runtime_mode`, `runtime_desired_state`, `runtime_state`,
-`last_dry_run_status`, `last_runtime_attempt_status`,
+`runtime_mode`, `runtime_process_mode`, `runtime_process_state`,
+`runtime_desired_state`, `runtime_state`, `last_dry_run_status`,
+`last_runtime_attempt_status`,
 `last_runtime_prepared_revision`, `last_runtime_transition_at`, and
 `last_runtime_error`. In the default no-process mode, a successful apply should
 show `runtime_state=active_config_ready`,
-`last_runtime_attempt_status=skipped`, and no runtime error. A validation or
-dry-run failure should show `runtime_state=validation_failed`, preserve the
-previous active revision/config artifact, and set a compact runtime error.
+`runtime_process_mode=disabled`, `runtime_process_state=disabled`,
+`last_runtime_attempt_status=skipped`, and no runtime error.
+`LENKER_AGENT_RUNTIME_PROCESS_MODE=local` opts into only a local process runner
+skeleton: it records a prepare/start intent after active files are ready and
+should report `runtime_mode=future-process-managed`,
+`runtime_process_mode=local`, `runtime_process_state=ready`, and
+`last_runtime_attempt_status=ready`. It still does not launch, reload, restart,
+watch, or supervise Xray. A validation or dry-run failure should show
+`runtime_state=validation_failed`, preserve the previous active revision/config
+artifact, and set a compact runtime error.
 
 Report the pending revision as applied:
 

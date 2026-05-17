@@ -153,6 +153,8 @@ export interface Node extends NodeSummary {
   hostname: string;
   xray_version: string;
   runtime_mode?: "no-process" | "dry-run-only" | "future-process-managed" | string;
+  runtime_process_mode?: "disabled" | "local" | string;
+  runtime_process_state?: "disabled" | "ready" | "failed" | string;
   runtime_desired_state?: string;
   runtime_state?: string;
   last_dry_run_status?: "not_configured" | "passed" | "failed" | string;

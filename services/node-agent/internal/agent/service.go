@@ -43,7 +43,13 @@ func WithXrayDryRunValidator(validator XrayDryRunValidator) ServiceOption {
 	return func(s *Service) {
 		s.xrayDryRun = validator
 		s.status.XrayDryRunEnabled = validator != nil
-		s.status.RuntimeMode = runtimeModeForValidator(validator)
+		if normalizeRuntimeProcessMode(s.identity.ProcessMode) == RuntimeProcessModeLocal {
+			s.status.RuntimeMode = RuntimeModeFuture
+		} else if validator != nil {
+			s.status.RuntimeMode = RuntimeModeDryRunOnly
+		} else {
+			s.status.RuntimeMode = RuntimeModeNoProcess
+		}
 	}
 }
 
@@ -55,12 +61,22 @@ func WithRuntimeSupervisor(supervisor RuntimeSupervisor) ServiceOption {
 	}
 }
 
+func WithRuntimeProcessRunner(runner RuntimeProcessRunner) ServiceOption {
+	return func(s *Service) {
+		s.runtime = NoProcessRuntimeSupervisor{
+			ProcessMode: s.identity.ProcessMode,
+			Runner:      runner,
+		}
+	}
+}
+
 func NewService(identity Identity, options ...ServiceOption) *Service {
 	registered := identity.NodeID != ""
 	status := StatusBootstrapping
 	if registered {
 		status = StatusActive
 	}
+	processMode := normalizeRuntimeProcessMode(identity.ProcessMode)
 
 	service := &Service{
 		identity: identity,
@@ -70,14 +86,18 @@ func NewService(identity Identity, options ...ServiceOption) *Service {
 			Registered:               registered,
 			PanelURL:                 identity.PanelURL,
 			XrayDryRunEnabled:        strings.TrimSpace(identity.XrayBin) != "",
-			RuntimeMode:              runtimeModeForXrayBin(identity.XrayBin),
+			RuntimeMode:              runtimeModeForIdentity(identity.XrayBin, processMode),
+			RuntimeProcessMode:       processMode,
+			RuntimeProcessState:      RuntimeProcessStateDisabled,
 			RuntimeDesiredState:      RuntimeDesiredStateConfigReady,
 			RuntimeState:             RuntimeStateNotPrepared,
 			LastDryRunStatus:         DryRunStatusNotConfigured,
 			LastRuntimeAttemptStatus: RuntimeAttemptSkipped,
 		},
 		configRevisions: make(map[int]ConfigRevision),
-		runtime:         NoProcessRuntimeSupervisor{},
+		runtime: NoProcessRuntimeSupervisor{
+			ProcessMode: processMode,
+		},
 	}
 	if strings.TrimSpace(identity.XrayBin) != "" {
 		service.xrayDryRun = CommandXrayDryRunValidator{Binary: identity.XrayBin}
@@ -119,6 +139,8 @@ func (s *Service) BuildHeartbeatPayload(now time.Time) (HeartbeatPayload, error)
 		Status:               s.status.Status,
 		ActiveRevision:       s.status.ActiveRevision,
 		RuntimeMode:          s.status.RuntimeMode,
+		RuntimeProcessMode:   s.status.RuntimeProcessMode,
+		RuntimeProcessState:  s.status.RuntimeProcessState,
 		RuntimeDesiredState:  s.status.RuntimeDesiredState,
 		RuntimeState:         s.status.RuntimeState,
 		LastDryRunStatus:     s.status.LastDryRunStatus,
@@ -133,13 +155,6 @@ func (s *Service) BuildHeartbeatPayload(now time.Time) (HeartbeatPayload, error)
 		ActiveConfigPath:     s.status.ConfigArtifactPath,
 		SentAt:               now.UTC(),
 	}, nil
-}
-
-func runtimeModeForValidator(validator XrayDryRunValidator) string {
-	if validator != nil {
-		return RuntimeModeDryRunOnly
-	}
-	return RuntimeModeNoProcess
 }
 
 func (s *Service) MarkHeartbeatSent(at time.Time) {
@@ -173,7 +188,18 @@ func (s *Service) TrackRuntimePrepared(revision ConfigRevision, artifact ConfigA
 	if transition.Attempt == "" {
 		transition.Attempt = RuntimeAttemptSkipped
 	}
+	if transition.ProcessMode == "" {
+		transition.ProcessMode = s.status.RuntimeProcessMode
+	}
+	if transition.ProcessMode == "" {
+		transition.ProcessMode = RuntimeProcessModeDisabled
+	}
+	if transition.ProcessState == "" {
+		transition.ProcessState = RuntimeProcessStateDisabled
+	}
 	s.status.RuntimeState = transition.State
+	s.status.RuntimeProcessMode = normalizeRuntimeProcessMode(transition.ProcessMode)
+	s.status.RuntimeProcessState = transition.ProcessState
 	s.status.LastDryRunStatus = dryRunStatus
 	s.status.LastRuntimeAttemptStatus = transition.Attempt
 	s.status.LastRuntimePrepared = revision.RevisionNumber
@@ -194,6 +220,14 @@ func (s *Service) TrackRuntimeFailure(message string, at time.Time, dryRunStatus
 		dryRunStatus = DryRunStatusNotConfigured
 	}
 	s.status.RuntimeState = RuntimeStateValidationFailed
+	if s.status.RuntimeProcessMode == "" {
+		s.status.RuntimeProcessMode = RuntimeProcessModeDisabled
+	}
+	if s.status.RuntimeProcessMode == RuntimeProcessModeLocal {
+		s.status.RuntimeProcessState = RuntimeProcessStateFailed
+	} else {
+		s.status.RuntimeProcessState = RuntimeProcessStateDisabled
+	}
 	s.status.LastDryRunStatus = dryRunStatus
 	s.status.LastRuntimeAttemptStatus = RuntimeAttemptFailed
 	s.status.LastRuntimeTransitionAt = at.UTC()
@@ -253,6 +287,7 @@ func (s *Service) ApplyConfigRevisionWithContext(ctx context.Context, revision C
 		Revision:     revision,
 		Artifact:     artifact,
 		DryRunStatus: dryRunStatus,
+		ProcessMode:  s.status.RuntimeProcessMode,
 		At:           time.Now().UTC(),
 	})
 	if err != nil {
@@ -260,6 +295,9 @@ func (s *Service) ApplyConfigRevisionWithContext(ctx context.Context, revision C
 	}
 	s.TrackAppliedRevision(revision)
 	s.TrackRuntimePrepared(revision, artifact, dryRunStatus, transition)
+	if err := s.PersistRuntimeState(artifact); err != nil {
+		return err
+	}
 	s.TrackValidationResult("applied", "", time.Now().UTC())
 	return nil
 }
@@ -320,6 +358,8 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 			FailedAt:             reportTime,
 			ErrorMessage:         errorMessage,
 			RuntimeMode:          s.status.RuntimeMode,
+			RuntimeProcessMode:   s.status.RuntimeProcessMode,
+			RuntimeProcessState:  s.status.RuntimeProcessState,
 			RuntimeDesiredState:  s.status.RuntimeDesiredState,
 			RuntimeState:         s.status.RuntimeState,
 			LastDryRunStatus:     s.status.LastDryRunStatus,
@@ -346,6 +386,8 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 		AppliedAt:            reportTime,
 		ActiveRevision:       revision.RevisionNumber,
 		RuntimeMode:          s.status.RuntimeMode,
+		RuntimeProcessMode:   s.status.RuntimeProcessMode,
+		RuntimeProcessState:  s.status.RuntimeProcessState,
 		RuntimeDesiredState:  s.status.RuntimeDesiredState,
 		RuntimeState:         s.status.RuntimeState,
 		LastDryRunStatus:     s.status.LastDryRunStatus,
@@ -570,6 +612,8 @@ func (s *Service) ActivateStagedConfigRevision(revision ConfigRevision, artifact
 		"last_applied_revision":          revision.RevisionNumber,
 		"rollback_candidate_revision":    revision.RollbackTargetRevision,
 		"runtime_mode":                   s.status.RuntimeMode,
+		"runtime_process_mode":           s.status.RuntimeProcessMode,
+		"runtime_process_state":          s.status.RuntimeProcessState,
 		"runtime_desired_state":          s.status.RuntimeDesiredState,
 		"runtime_state":                  RuntimeStateActiveConfigReady,
 		"last_dry_run_status":            dryRunStatusForValidator(s.xrayDryRun),
@@ -594,6 +638,48 @@ func (s *Service) ActivateStagedConfigRevision(revision ConfigRevision, artifact
 	}
 
 	return artifact, nil
+}
+
+func (s *Service) PersistRuntimeState(artifact ConfigArtifact) error {
+	if strings.TrimSpace(artifact.StatePath) == "" {
+		return nil
+	}
+
+	state := map[string]any{}
+	body, err := os.ReadFile(artifact.StatePath)
+	if err == nil && len(body) > 0 {
+		if err := json.Unmarshal(body, &state); err != nil {
+			return ErrInvalidConfigPayload
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+
+	state["runtime_mode"] = s.status.RuntimeMode
+	state["runtime_process_mode"] = s.status.RuntimeProcessMode
+	state["runtime_process_state"] = s.status.RuntimeProcessState
+	state["runtime_desired_state"] = s.status.RuntimeDesiredState
+	state["runtime_state"] = s.status.RuntimeState
+	state["last_dry_run_status"] = s.status.LastDryRunStatus
+	state["last_runtime_attempt_status"] = s.status.LastRuntimeAttemptStatus
+	state["last_runtime_prepared_revision"] = s.status.LastRuntimePrepared
+	state["last_runtime_transition_at"] = s.status.LastRuntimeTransitionAt
+	state["last_runtime_error"] = s.status.LastRuntimeError
+	if s.status.RuntimeProcessMode == RuntimeProcessModeLocal {
+		state["process_control"] = "local-skeleton"
+	} else {
+		state["process_control"] = "unavailable"
+	}
+
+	updated, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	updated = append(updated, '\n')
+	if err := writeFileAtomic(artifact.StatePath, updated, 0o600); err != nil {
+		return fmt.Errorf("%w: %v", ErrConfigArtifactWrite, err)
+	}
+	return nil
 }
 
 func writeFileAtomic(path string, body []byte, perm os.FileMode) error {

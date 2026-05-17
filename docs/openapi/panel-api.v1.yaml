@@ -1176,6 +1176,14 @@ components:
           type: string
           description: Node-agent runtime supervision mode. MVP defaults to no-process or dry-run-only; no daemon is managed yet.
           enum: [no-process, dry-run-only, future-process-managed]
+        runtime_process_mode:
+          type: string
+          description: Explicit node-agent local process runner gate. Default is disabled; local is an opt-in skeleton and does not ship daemon lifecycle management.
+          enum: [disabled, local]
+        runtime_process_state:
+          type: string
+          description: Latest process runner capability/preparation state. Disabled means no process control was attempted.
+          enum: [disabled, ready, failed]
         runtime_desired_state:
           type: string
           description: Desired local runtime preparation state, currently validated-config-ready.
@@ -1330,6 +1338,12 @@ components:
         runtime_mode:
           type: string
           enum: [no-process, dry-run-only, future-process-managed]
+        runtime_process_mode:
+          type: string
+          enum: [disabled, local]
+        runtime_process_state:
+          type: string
+          enum: [disabled, ready, failed]
         runtime_desired_state:
           type: string
         runtime_state:
@@ -1439,6 +1453,12 @@ components:
         runtime_mode:
           type: string
           enum: [no-process, dry-run-only, future-process-managed]
+        runtime_process_mode:
+          type: string
+          enum: [disabled, local]
+        runtime_process_state:
+          type: string
+          enum: [disabled, ready, failed]
         runtime_desired_state:
           type: string
         runtime_state:
@@ -1495,6 +1515,12 @@ components:
         runtime_mode:
           type: string
           enum: [no-process, dry-run-only, future-process-managed]
+        runtime_process_mode:
+          type: string
+          enum: [disabled, local]
+        runtime_process_state:
+          type: string
+          enum: [disabled, ready, failed]
         runtime_desired_state:
           type: string
         runtime_state:

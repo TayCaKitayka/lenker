@@ -16,6 +16,7 @@ type Config struct {
 	PanelURL           string
 	StateDir           string
 	XrayBin            string
+	RuntimeProcessMode string
 	LogLevel           string
 	HeartbeatInterval  time.Duration
 	ConfigPollInterval time.Duration
@@ -45,6 +46,7 @@ func Load() (Config, error) {
 		PanelURL:           strings.TrimRight(strings.TrimSpace(os.Getenv("LENKER_AGENT_PANEL_URL")), "/"),
 		StateDir:           stringFromEnv("LENKER_AGENT_STATE_DIR", ".lenker-node-agent"),
 		XrayBin:            strings.TrimSpace(os.Getenv("LENKER_AGENT_XRAY_BIN")),
+		RuntimeProcessMode: stringFromEnv("LENKER_AGENT_RUNTIME_PROCESS_MODE", "disabled"),
 		LogLevel:           stringFromEnv("LENKER_AGENT_LOG_LEVEL", "info"),
 		HeartbeatInterval:  heartbeatInterval,
 		ConfigPollInterval: configPollInterval,
@@ -56,6 +58,9 @@ func Load() (Config, error) {
 	}
 	if cfg.ConfigPollInterval <= 0 {
 		return Config{}, errors.New("LENKER_AGENT_CONFIG_POLL_INTERVAL must be positive")
+	}
+	if cfg.RuntimeProcessMode != "disabled" && cfg.RuntimeProcessMode != "local" {
+		return Config{}, errors.New("LENKER_AGENT_RUNTIME_PROCESS_MODE must be disabled or local")
 	}
 
 	return cfg, nil

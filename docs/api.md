@@ -224,9 +224,10 @@ The current backend slice accepts `Authorization: Bearer <node_token>` and
 updates basic node status, agent version, active revision, `last_seen_at`, and
 last health timestamp. It also accepts read-only runtime readiness metadata:
 `last_validation_status`, `last_validation_error`, `last_validation_at`,
-`last_applied_revision`, and `active_config_path`. Unknown nodes return
-`not_found`. It does not register new nodes, and it does not store metrics,
-logs, config blobs, or traffic accounting.
+`last_applied_revision`, `active_config_path`, runtime preparation fields, and
+the explicit `runtime_process_mode` / `runtime_process_state` process runner
+gate. Unknown nodes return `not_found`. It does not register new nodes, and it
+does not store metrics, logs, config blobs, or traffic accounting.
 
 #### `GET /nodes/{nodeId}`
 
@@ -329,7 +330,9 @@ advanced on failed validation. Xray compatibility failures use stable summaries
 such as `invalid_xray_config:invalid_routing_outbound_reference`; optional Xray
 binary dry-run failures use `xray_dry_run_failed:<reason>`. Reports also update
 the node read-only runtime readiness fields shown in admin node detail. It does
-not execute rollback, restart processes, or control Xray.
+not execute rollback, restart processes, or control Xray. The optional
+`runtime_process_mode=local` value is only a node-agent local skeleton signal;
+it does not mean the panel starts or supervises a daemon.
 
 #### `POST /nodes/{nodeId}/config-revisions/{revisionId}/rollback`
 

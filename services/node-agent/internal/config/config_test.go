@@ -10,6 +10,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("LENKER_AGENT_HEARTBEAT_INTERVAL", "")
 	t.Setenv("LENKER_AGENT_CONFIG_POLL_INTERVAL", "")
 	t.Setenv("LENKER_AGENT_XRAY_BIN", "")
+	t.Setenv("LENKER_AGENT_RUNTIME_PROCESS_MODE", "")
 	t.Setenv("LENKER_AGENT_TLS_ENABLED", "")
 
 	cfg, err := Load()
@@ -28,6 +29,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.TLSEnabled {
 		t.Fatalf("expected tls disabled by default")
 	}
+	if cfg.RuntimeProcessMode != "disabled" {
+		t.Fatalf("expected runtime process mode disabled by default, got %q", cfg.RuntimeProcessMode)
+	}
 }
 
 func TestLoadEnv(t *testing.T) {
@@ -41,6 +45,7 @@ func TestLoadEnv(t *testing.T) {
 	t.Setenv("LENKER_AGENT_HEARTBEAT_INTERVAL", "45s")
 	t.Setenv("LENKER_AGENT_CONFIG_POLL_INTERVAL", "60s")
 	t.Setenv("LENKER_AGENT_XRAY_BIN", "/usr/local/bin/xray")
+	t.Setenv("LENKER_AGENT_RUNTIME_PROCESS_MODE", "local")
 	t.Setenv("LENKER_AGENT_TLS_ENABLED", "true")
 
 	cfg, err := Load()
@@ -65,6 +70,9 @@ func TestLoadEnv(t *testing.T) {
 	if cfg.XrayBin != "/usr/local/bin/xray" {
 		t.Fatalf("unexpected xray bin: %q", cfg.XrayBin)
 	}
+	if cfg.RuntimeProcessMode != "local" {
+		t.Fatalf("unexpected runtime process mode: %q", cfg.RuntimeProcessMode)
+	}
 	if !cfg.TLSEnabled {
 		t.Fatalf("expected tls enabled")
 	}
@@ -83,5 +91,13 @@ func TestLoadInvalidConfigPollInterval(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatalf("expected invalid config poll interval error")
+	}
+}
+
+func TestLoadInvalidRuntimeProcessMode(t *testing.T) {
+	t.Setenv("LENKER_AGENT_RUNTIME_PROCESS_MODE", "supervised")
+
+	if _, err := Load(); err == nil {
+		t.Fatalf("expected invalid runtime process mode error")
 	}
 }
