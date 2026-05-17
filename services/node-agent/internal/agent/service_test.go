@@ -118,6 +118,27 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	}
 }
 
+func TestRuntimeEventTrailIsBounded(t *testing.T) {
+	service := NewService(Identity{NodeID: "node-1"})
+
+	for i := 1; i <= runtimeEventTrailLimit+3; i++ {
+		service.AppendRuntimeEvent(RuntimeEvent{
+			Type:           RuntimeEventApplyFailure,
+			Status:         "failed",
+			RevisionNumber: i,
+			Message:        "fixture",
+		})
+	}
+
+	events := service.Status().RuntimeEvents
+	if len(events) != runtimeEventTrailLimit {
+		t.Fatalf("expected bounded trail length %d, got %d", runtimeEventTrailLimit, len(events))
+	}
+	if events[0].RevisionNumber != 4 || events[len(events)-1].RevisionNumber != runtimeEventTrailLimit+3 {
+		t.Fatalf("expected newest events to be retained, got %#v", events)
+	}
+}
+
 func TestValidateAndStoreConfigRevision(t *testing.T) {
 	service := NewService(Identity{NodeID: "node-1"})
 	revision := signedTestConfigRevision(t, "node-1", 2, 1)
@@ -473,6 +494,9 @@ func TestPollPendingConfigRevisionLocalProcessModeUsesRunnerSkeleton(t *testing.
 	if !client.reported || client.report.RuntimeProcessMode != RuntimeProcessModeLocal || client.report.RuntimeProcessState != RuntimeProcessStateReady {
 		t.Fatalf("expected local process metadata in report, got %#v", client.report)
 	}
+	if len(status.RuntimeEvents) != 2 || status.RuntimeEvents[0].Type != RuntimeEventProcessIntent || status.RuntimeEvents[1].Type != RuntimeEventApplySuccess {
+		t.Fatalf("expected process intent and apply success events, got %#v", status.RuntimeEvents)
+	}
 	stateBody, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(status.ConfigArtifactPath)), "state.json"))
 	if err != nil {
 		t.Fatalf("expected state artifact: %v", err)
@@ -483,6 +507,10 @@ func TestPollPendingConfigRevisionLocalProcessModeUsesRunnerSkeleton(t *testing.
 	}
 	if state["runtime_process_mode"] != RuntimeProcessModeLocal || state["runtime_process_state"] != RuntimeProcessStateReady || state["process_control"] != "local-skeleton" {
 		t.Fatalf("expected local process state artifact, got %#v", state)
+	}
+	events, ok := state["runtime_events"].([]any)
+	if !ok || len(events) != 2 {
+		t.Fatalf("expected runtime events in state artifact, got %#v", state["runtime_events"])
 	}
 }
 
@@ -557,6 +585,9 @@ func TestPollPendingConfigRevisionDryRunFailureReportsFailedAndKeepsActive(t *te
 	}
 	if service.Status().RuntimeState != RuntimeStateValidationFailed || service.Status().LastDryRunStatus != DryRunStatusFailed {
 		t.Fatalf("expected failed dry-run runtime state: %#v", service.Status())
+	}
+	if len(service.Status().RuntimeEvents) != 1 || service.Status().RuntimeEvents[0].Type != RuntimeEventDryRunFailure {
+		t.Fatalf("expected dry-run failure event, got %#v", service.Status().RuntimeEvents)
 	}
 }
 
@@ -770,6 +801,13 @@ func TestApplyConfigRevisionWritesLocalArtifacts(t *testing.T) {
 	}
 	if state["runtime_process_mode"] != RuntimeProcessModeDisabled || state["runtime_process_state"] != RuntimeProcessStateDisabled {
 		t.Fatalf("expected runtime process state in state artifact: %#v", state)
+	}
+	if len(status.RuntimeEvents) != 1 || status.RuntimeEvents[0].Type != RuntimeEventApplySuccess || status.RuntimeEvents[0].RevisionNumber != 4 {
+		t.Fatalf("expected apply success runtime event, got %#v", status.RuntimeEvents)
+	}
+	events, ok := state["runtime_events"].([]any)
+	if !ok || len(events) != 1 {
+		t.Fatalf("expected runtime events in state artifact, got %#v", state["runtime_events"])
 	}
 }
 

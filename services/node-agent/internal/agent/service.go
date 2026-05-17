@@ -234,6 +234,27 @@ func (s *Service) TrackRuntimeFailure(message string, at time.Time, dryRunStatus
 	s.status.LastRuntimeError = strings.TrimSpace(message)
 }
 
+func (s *Service) AppendRuntimeEvent(event RuntimeEvent) {
+	if event.At.IsZero() {
+		event.At = time.Now().UTC()
+	}
+	event.At = event.At.UTC()
+	event.Message = strings.TrimSpace(event.Message)
+	if event.RuntimeMode == "" {
+		event.RuntimeMode = s.status.RuntimeMode
+	}
+	if event.RuntimeProcessMode == "" {
+		event.RuntimeProcessMode = s.status.RuntimeProcessMode
+	}
+	if event.RuntimeProcessState == "" {
+		event.RuntimeProcessState = s.status.RuntimeProcessState
+	}
+	s.status.RuntimeEvents = append(s.status.RuntimeEvents, event)
+	if len(s.status.RuntimeEvents) > runtimeEventTrailLimit {
+		s.status.RuntimeEvents = append([]RuntimeEvent(nil), s.status.RuntimeEvents[len(s.status.RuntimeEvents)-runtimeEventTrailLimit:]...)
+	}
+}
+
 func (s *Service) ValidateAndStoreConfigRevision(revision ConfigRevision) error {
 	if revision.NodeID == "" || revision.RevisionNumber <= 0 || revision.BundleHash == "" || revision.Signature == "" || revision.Signer == "" {
 		return ErrInvalidConfigRevision
@@ -272,15 +293,33 @@ func (s *Service) ApplyConfigRevision(revision ConfigRevision) error {
 
 func (s *Service) ApplyConfigRevisionWithContext(ctx context.Context, revision ConfigRevision) error {
 	if err := s.ValidateAndStoreConfigRevision(revision); err != nil {
+		s.AppendRuntimeEvent(RuntimeEvent{
+			Type:           RuntimeEventValidationFail,
+			Status:         "failed",
+			RevisionNumber: revision.RevisionNumber,
+			Message:        configRevisionErrorMessage(err),
+		})
 		return err
 	}
 	dryRunStatus := dryRunStatusForValidator(s.xrayDryRun)
 	if err := s.ValidateXrayDryRun(ctx, revision); err != nil {
 		dryRunStatus = DryRunStatusFailed
+		s.AppendRuntimeEvent(RuntimeEvent{
+			Type:           RuntimeEventDryRunFailure,
+			Status:         "failed",
+			RevisionNumber: revision.RevisionNumber,
+			Message:        configRevisionErrorMessage(err),
+		})
 		return err
 	}
 	artifact, err := s.SerializeConfigRevision(revision)
 	if err != nil {
+		s.AppendRuntimeEvent(RuntimeEvent{
+			Type:           RuntimeEventApplyFailure,
+			Status:         "failed",
+			RevisionNumber: revision.RevisionNumber,
+			Message:        configRevisionErrorMessage(err),
+		})
 		return err
 	}
 	transition, err := s.runtime.PrepareActiveConfig(ctx, RuntimePrepareRequest{
@@ -291,11 +330,40 @@ func (s *Service) ApplyConfigRevisionWithContext(ctx context.Context, revision C
 		At:           time.Now().UTC(),
 	})
 	if err != nil {
+		s.AppendRuntimeEvent(RuntimeEvent{
+			Type:                RuntimeEventApplyFailure,
+			Status:              "failed",
+			RevisionNumber:      revision.RevisionNumber,
+			Message:             configRevisionErrorMessage(err),
+			RuntimeProcessMode:  transition.ProcessMode,
+			RuntimeProcessState: transition.ProcessState,
+		})
 		return err
 	}
 	s.TrackAppliedRevision(revision)
 	s.TrackRuntimePrepared(revision, artifact, dryRunStatus, transition)
+	if s.status.RuntimeProcessMode == RuntimeProcessModeLocal {
+		s.AppendRuntimeEvent(RuntimeEvent{
+			Type:           RuntimeEventProcessIntent,
+			Status:         "ready",
+			RevisionNumber: revision.RevisionNumber,
+			Message:        "local process prepare/start intent recorded",
+			At:             transition.At,
+		})
+	}
+	s.AppendRuntimeEvent(RuntimeEvent{
+		Type:           RuntimeEventApplySuccess,
+		Status:         "applied",
+		RevisionNumber: revision.RevisionNumber,
+		At:             transition.At,
+	})
 	if err := s.PersistRuntimeState(artifact); err != nil {
+		s.AppendRuntimeEvent(RuntimeEvent{
+			Type:           RuntimeEventApplyFailure,
+			Status:         "failed",
+			RevisionNumber: revision.RevisionNumber,
+			Message:        configRevisionErrorMessage(err),
+		})
 		return err
 	}
 	s.TrackValidationResult("applied", "", time.Now().UTC())
@@ -665,6 +733,7 @@ func (s *Service) PersistRuntimeState(artifact ConfigArtifact) error {
 	state["last_runtime_prepared_revision"] = s.status.LastRuntimePrepared
 	state["last_runtime_transition_at"] = s.status.LastRuntimeTransitionAt
 	state["last_runtime_error"] = s.status.LastRuntimeError
+	state["runtime_events"] = s.status.RuntimeEvents
 	if s.status.RuntimeProcessMode == RuntimeProcessModeLocal {
 		state["process_control"] = "local-skeleton"
 	} else {

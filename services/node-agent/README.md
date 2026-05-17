@@ -223,6 +223,14 @@ Read-only runtime fields in `/status`, heartbeat, and revision reports:
 - `last_runtime_transition_at`
 - `last_runtime_error`
 
+Local `/status` also includes a compact bounded `runtime_events` trail for the
+latest node-local runtime events. The trail keeps the newest events only and is
+intended for development/operator inspection, not as a full audit system.
+Current event types cover apply success, apply failure, validation failure,
+Xray dry-run failure, and the local process prepare/start intent in
+`LENKER_AGENT_RUNTIME_PROCESS_MODE=local`. The trail is stored in local
+`state.json`; it is not sent to panel-api yet.
+
 Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 
 ```text
@@ -239,7 +247,8 @@ Writes use a temp-file then rename pattern. The agent writes revision-specific
 and staged artifacts first, validates staged JSON, then replaces active
 artifacts. `metadata.json` and `state.json` include the revision id, bundle
 hash, signer, rollback target revision, operation kind, source revision metadata
-when present, and config path references.
+when present, config path references, runtime process state, and the bounded
+runtime event trail.
 
 Rollback is file-level only. A rollback-originated pending revision is applied
 through the same internal validation, optional Xray dry-run, and staged ->

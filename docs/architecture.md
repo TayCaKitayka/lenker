@@ -198,6 +198,11 @@ a fakeable prepare/start intent boundary for a future local runner and reports
 restart, process watchdog, or systemd integration. The dev profile does not
 download or bake Xray into images.
 
+Node-agent keeps a small bounded local `runtime_events` trail in `/status` and
+`state.json` for the newest apply success/failure, validation failure, Xray
+dry-run failure, and local process prepare/start intent events. This is a
+node-local operational trail, not a durable panel-api audit stream yet.
+
 ### Boundary 3: User App to Panel
 
 - protected by standard HTTPS

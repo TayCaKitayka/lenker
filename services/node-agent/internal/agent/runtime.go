@@ -32,7 +32,15 @@ const (
 	DryRunStatusNotConfigured = "not_configured"
 	DryRunStatusPassed        = "passed"
 	DryRunStatusFailed        = "failed"
+
+	RuntimeEventApplySuccess   = "apply_success"
+	RuntimeEventApplyFailure   = "apply_failure"
+	RuntimeEventValidationFail = "validation_failure"
+	RuntimeEventDryRunFailure  = "dry_run_failure"
+	RuntimeEventProcessIntent  = "process_prepare_start_intent"
 )
+
+const runtimeEventTrailLimit = 20
 
 type RuntimePrepareRequest struct {
 	Revision     ConfigRevision
