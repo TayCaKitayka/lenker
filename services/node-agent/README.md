@@ -25,6 +25,7 @@ Current foundation:
 - registration and heartbeat request builders
 - signed config revision validation with in-memory metadata storage and local config artifact serialization
 - config revision tracking and rollback planning skeleton
+- no-process runtime supervisor skeleton state around validated active config artifacts
 
 Configuration:
 
@@ -185,6 +186,28 @@ For a successful real-binary dry-run apply, expected signals are
 `xray_dry_run_enabled=true`, `last_validation_status=applied`, an empty
 `last_validation_error`, a non-zero `last_applied_revision`, and an
 `active_config_path` under the agent state directory.
+
+Runtime supervisor skeleton:
+
+The agent now tracks an explicit local runtime preparation state without
+starting or supervising Xray. The default supervisor is `no-process`: it records
+that a validated config is active on disk and that process control is
+unavailable by design. If `LENKER_AGENT_XRAY_BIN` is configured, the runtime
+mode becomes `dry-run-only`; the candidate must pass the one-shot Xray dry-run
+before the active file switch is reported as prepared.
+
+Read-only runtime fields in `/status`, heartbeat, and revision reports:
+
+- `runtime_mode`: `no-process` or `dry-run-only`
+- `runtime_desired_state`: currently `validated-config-ready`
+- `runtime_state`: `not_prepared`, `active_config_ready`, `validation_failed`,
+  or `prepare_failed`
+- `last_dry_run_status`: `not_configured`, `passed`, or `failed`
+- `last_runtime_attempt_status`: currently `skipped` for no-process success or
+  `failed` for validation/dry-run failures
+- `last_runtime_prepared_revision`
+- `last_runtime_transition_at`
+- `last_runtime_error`
 
 Local artifact layout under `LENKER_AGENT_STATE_DIR`:
 

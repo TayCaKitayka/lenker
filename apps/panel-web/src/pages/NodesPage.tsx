@@ -582,6 +582,14 @@ export function NodesPage({ session, onUnauthorized }: NodesPageProps) {
             </div>
 
             <dl className="runtime-status-grid">
+              <DetailItem label="Runtime mode" value={selectedNode.runtime_mode || "no-process"} />
+              <DetailItem label="Runtime desired state" value={selectedNode.runtime_desired_state || "validated-config-ready"} />
+              <DetailItem label="Runtime state" value={selectedNode.runtime_state || "not prepared"} />
+              <DetailItem label="Dry-run status" value={selectedNode.last_dry_run_status || "not configured"} />
+              <DetailItem label="Runtime attempt" value={selectedNode.last_runtime_attempt_status || "skipped"} />
+              <DetailItem label="Runtime prepared revision" value={formatRevisionNumber(selectedNode.last_runtime_prepared_revision)} />
+              <DetailItem label="Runtime transition at" value={formatNodeTimestamp(selectedNode.last_runtime_transition_at)} />
+              <DetailItem label="Runtime error" value={selectedNode.last_runtime_error} mono />
               <DetailItem label="Last validation status" value={selectedNode.last_validation_status || "not yet validated"} />
               <DetailItem label="Last validation error" value={selectedNode.last_validation_error} mono />
               <DetailItem label="Last validation at" value={formatNodeTimestamp(selectedNode.last_validation_at)} />

@@ -152,6 +152,14 @@ export interface Node extends NodeSummary {
   country_code: string;
   hostname: string;
   xray_version: string;
+  runtime_mode?: "no-process" | "dry-run-only" | "future-process-managed" | string;
+  runtime_desired_state?: string;
+  runtime_state?: string;
+  last_dry_run_status?: "not_configured" | "passed" | "failed" | string;
+  last_runtime_attempt_status?: "skipped" | "ready" | "failed" | string;
+  last_runtime_prepared_revision?: number;
+  last_runtime_transition_at?: string | null;
+  last_runtime_error?: string | null;
   last_validation_status?: "applied" | "failed" | "" | null;
   last_validation_error?: string | null;
   last_validation_at?: string | null;

@@ -1172,6 +1172,33 @@ components:
         active_revision_id:
           type: integer
           minimum: 0
+        runtime_mode:
+          type: string
+          description: Node-agent runtime supervision mode. MVP defaults to no-process or dry-run-only; no daemon is managed yet.
+          enum: [no-process, dry-run-only, future-process-managed]
+        runtime_desired_state:
+          type: string
+          description: Desired local runtime preparation state, currently validated-config-ready.
+        runtime_state:
+          type: string
+          description: Latest local runtime preparation state reported by node-agent.
+          enum: [not_prepared, active_config_ready, validation_failed, prepare_failed]
+        last_dry_run_status:
+          type: string
+          enum: [not_configured, passed, failed]
+        last_runtime_attempt_status:
+          type: string
+          enum: [skipped, ready, failed]
+        last_runtime_prepared_revision:
+          type: integer
+          minimum: 0
+        last_runtime_transition_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_runtime_error:
+          type: string
+          description: Compact runtime preparation error, empty after successful no-process preparation.
         last_validation_status:
           type: string
           description: Latest node-agent config validation/apply result, empty when no validation has been reported yet.
@@ -1300,6 +1327,28 @@ components:
         active_revision:
           type: integer
           minimum: 0
+        runtime_mode:
+          type: string
+          enum: [no-process, dry-run-only, future-process-managed]
+        runtime_desired_state:
+          type: string
+        runtime_state:
+          type: string
+          enum: [not_prepared, active_config_ready, validation_failed, prepare_failed]
+        last_dry_run_status:
+          type: string
+          enum: [not_configured, passed, failed]
+        last_runtime_attempt_status:
+          type: string
+          enum: [skipped, ready, failed]
+        last_runtime_prepared_revision:
+          type: integer
+          minimum: 0
+        last_runtime_transition_at:
+          type: string
+          format: date-time
+        last_runtime_error:
+          type: string
         last_validation_status:
           type: string
           description: Latest node-agent validation/apply result.
@@ -1387,6 +1436,28 @@ components:
         active_revision:
           type: integer
           minimum: 0
+        runtime_mode:
+          type: string
+          enum: [no-process, dry-run-only, future-process-managed]
+        runtime_desired_state:
+          type: string
+        runtime_state:
+          type: string
+          enum: [not_prepared, active_config_ready, validation_failed, prepare_failed]
+        last_dry_run_status:
+          type: string
+          enum: [not_configured, passed, failed]
+        last_runtime_attempt_status:
+          type: string
+          enum: [skipped, ready, failed]
+        last_runtime_prepared_revision:
+          type: integer
+          minimum: 0
+        last_runtime_transition_at:
+          type: string
+          format: date-time
+        last_runtime_error:
+          type: string
         last_validation_status:
           type: string
           description: Latest node-agent validation/apply result.
@@ -1421,6 +1492,29 @@ components:
         active_revision:
           type: integer
           minimum: 0
+        runtime_mode:
+          type: string
+          enum: [no-process, dry-run-only, future-process-managed]
+        runtime_desired_state:
+          type: string
+        runtime_state:
+          type: string
+          enum: [not_prepared, active_config_ready, validation_failed, prepare_failed]
+        last_dry_run_status:
+          type: string
+          enum: [not_configured, passed, failed]
+        last_runtime_attempt_status:
+          type: string
+          enum: [skipped, ready, failed]
+        last_runtime_prepared_revision:
+          type: integer
+          minimum: 0
+        last_runtime_transition_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_runtime_error:
+          type: string
         last_validation_status:
           type: string
           enum: ["", applied, failed]

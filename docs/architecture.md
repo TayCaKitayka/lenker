@@ -183,8 +183,17 @@ through the same validation and staged -> active local file path. The agent
 reports read-only runtime readiness metadata (`last_validation_status`, error,
 timestamp, last applied revision, and active config path) through the revision
 report and heartbeat contracts so panel admins can inspect the latest local
-validation result. No Xray daemon, reload, restart, or supervisor is controlled
-by this layer, and the dev profile does not download or bake Xray into images.
+validation result.
+
+Node-agent also has a no-process runtime supervisor skeleton. It tracks
+`runtime_mode`, desired runtime state, latest runtime state, dry-run status,
+last prepared revision, transition timestamp, and compact runtime error. The
+default mode records that a validated config is active on disk but that no Xray
+daemon is launched or supervised. With `LENKER_AGENT_XRAY_BIN`, the mode is
+`dry-run-only`: the one-shot Xray validation must pass before local state moves
+to `active_config_ready`. No Xray daemon, reload, restart, process watchdog, or
+systemd integration is controlled by this layer, and the dev profile does not
+download or bake Xray into images.
 
 ### Boundary 3: User App to Panel
 

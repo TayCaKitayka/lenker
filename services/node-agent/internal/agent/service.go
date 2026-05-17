@@ -34,6 +34,7 @@ type Service struct {
 	status          Status
 	configRevisions map[int]ConfigRevision
 	xrayDryRun      XrayDryRunValidator
+	runtime         RuntimeSupervisor
 }
 
 type ServiceOption func(*Service)
@@ -41,6 +42,16 @@ type ServiceOption func(*Service)
 func WithXrayDryRunValidator(validator XrayDryRunValidator) ServiceOption {
 	return func(s *Service) {
 		s.xrayDryRun = validator
+		s.status.XrayDryRunEnabled = validator != nil
+		s.status.RuntimeMode = runtimeModeForValidator(validator)
+	}
+}
+
+func WithRuntimeSupervisor(supervisor RuntimeSupervisor) ServiceOption {
+	return func(s *Service) {
+		if supervisor != nil {
+			s.runtime = supervisor
+		}
 	}
 }
 
@@ -54,13 +65,19 @@ func NewService(identity Identity, options ...ServiceOption) *Service {
 	service := &Service{
 		identity: identity,
 		status: Status{
-			NodeID:            identity.NodeID,
-			Status:            status,
-			Registered:        registered,
-			PanelURL:          identity.PanelURL,
-			XrayDryRunEnabled: strings.TrimSpace(identity.XrayBin) != "",
+			NodeID:                   identity.NodeID,
+			Status:                   status,
+			Registered:               registered,
+			PanelURL:                 identity.PanelURL,
+			XrayDryRunEnabled:        strings.TrimSpace(identity.XrayBin) != "",
+			RuntimeMode:              runtimeModeForXrayBin(identity.XrayBin),
+			RuntimeDesiredState:      RuntimeDesiredStateConfigReady,
+			RuntimeState:             RuntimeStateNotPrepared,
+			LastDryRunStatus:         DryRunStatusNotConfigured,
+			LastRuntimeAttemptStatus: RuntimeAttemptSkipped,
 		},
 		configRevisions: make(map[int]ConfigRevision),
+		runtime:         NoProcessRuntimeSupervisor{},
 	}
 	if strings.TrimSpace(identity.XrayBin) != "" {
 		service.xrayDryRun = CommandXrayDryRunValidator{Binary: identity.XrayBin}
@@ -101,6 +118,14 @@ func (s *Service) BuildHeartbeatPayload(now time.Time) (HeartbeatPayload, error)
 		AgentVersion:         AgentVersion,
 		Status:               s.status.Status,
 		ActiveRevision:       s.status.ActiveRevision,
+		RuntimeMode:          s.status.RuntimeMode,
+		RuntimeDesiredState:  s.status.RuntimeDesiredState,
+		RuntimeState:         s.status.RuntimeState,
+		LastDryRunStatus:     s.status.LastDryRunStatus,
+		LastRuntimeAttempt:   s.status.LastRuntimeAttemptStatus,
+		LastRuntimePrepared:  s.status.LastRuntimePrepared,
+		LastRuntimeAt:        s.status.LastRuntimeTransitionAt,
+		LastRuntimeError:     s.status.LastRuntimeError,
 		LastValidationStatus: s.status.LastValidationStatus,
 		LastValidationError:  s.status.LastValidationError,
 		LastValidationAt:     s.status.LastValidationAt,
@@ -108,6 +133,13 @@ func (s *Service) BuildHeartbeatPayload(now time.Time) (HeartbeatPayload, error)
 		ActiveConfigPath:     s.status.ConfigArtifactPath,
 		SentAt:               now.UTC(),
 	}, nil
+}
+
+func runtimeModeForValidator(validator XrayDryRunValidator) string {
+	if validator != nil {
+		return RuntimeModeDryRunOnly
+	}
+	return RuntimeModeNoProcess
 }
 
 func (s *Service) MarkHeartbeatSent(at time.Time) {
@@ -129,6 +161,43 @@ func (s *Service) TrackValidationResult(status string, message string, at time.T
 		at = time.Now().UTC()
 	}
 	s.status.LastValidationAt = at.UTC()
+}
+
+func (s *Service) TrackRuntimePrepared(revision ConfigRevision, artifact ConfigArtifact, dryRunStatus string, transition RuntimeTransition) {
+	if transition.At.IsZero() {
+		transition.At = time.Now().UTC()
+	}
+	if transition.State == "" {
+		transition.State = RuntimeStateActiveConfigReady
+	}
+	if transition.Attempt == "" {
+		transition.Attempt = RuntimeAttemptSkipped
+	}
+	s.status.RuntimeState = transition.State
+	s.status.LastDryRunStatus = dryRunStatus
+	s.status.LastRuntimeAttemptStatus = transition.Attempt
+	s.status.LastRuntimePrepared = revision.RevisionNumber
+	s.status.LastRuntimeTransitionAt = transition.At.UTC()
+	s.status.LastRuntimeError = strings.TrimSpace(transition.ErrorMessage)
+	s.status.ConfigArtifactPath = artifact.ConfigPath
+	s.status.MetadataArtifactPath = artifact.MetadataPath
+}
+
+func (s *Service) TrackRuntimeFailure(message string, at time.Time, dryRunStatus string) {
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	if dryRunStatus == "" {
+		dryRunStatus = s.status.LastDryRunStatus
+	}
+	if dryRunStatus == "" {
+		dryRunStatus = DryRunStatusNotConfigured
+	}
+	s.status.RuntimeState = RuntimeStateValidationFailed
+	s.status.LastDryRunStatus = dryRunStatus
+	s.status.LastRuntimeAttemptStatus = RuntimeAttemptFailed
+	s.status.LastRuntimeTransitionAt = at.UTC()
+	s.status.LastRuntimeError = strings.TrimSpace(message)
 }
 
 func (s *Service) ValidateAndStoreConfigRevision(revision ConfigRevision) error {
@@ -171,16 +240,26 @@ func (s *Service) ApplyConfigRevisionWithContext(ctx context.Context, revision C
 	if err := s.ValidateAndStoreConfigRevision(revision); err != nil {
 		return err
 	}
+	dryRunStatus := dryRunStatusForValidator(s.xrayDryRun)
 	if err := s.ValidateXrayDryRun(ctx, revision); err != nil {
+		dryRunStatus = DryRunStatusFailed
 		return err
 	}
 	artifact, err := s.SerializeConfigRevision(revision)
 	if err != nil {
 		return err
 	}
+	transition, err := s.runtime.PrepareActiveConfig(ctx, RuntimePrepareRequest{
+		Revision:     revision,
+		Artifact:     artifact,
+		DryRunStatus: dryRunStatus,
+		At:           time.Now().UTC(),
+	})
+	if err != nil {
+		return err
+	}
 	s.TrackAppliedRevision(revision)
-	s.status.ConfigArtifactPath = artifact.ConfigPath
-	s.status.MetadataArtifactPath = artifact.MetadataPath
+	s.TrackRuntimePrepared(revision, artifact, dryRunStatus, transition)
 	s.TrackValidationResult("applied", "", time.Now().UTC())
 	return nil
 }
@@ -235,10 +314,19 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 	if err := s.ApplyConfigRevisionWithContext(ctx, revision); err != nil {
 		errorMessage := configRevisionErrorMessage(err)
 		s.TrackValidationResult("failed", errorMessage, reportTime)
+		s.TrackRuntimeFailure(errorMessage, reportTime, dryRunStatusForError(err, s.xrayDryRun))
 		reportErr := client.ReportConfigRevision(ctx, s.identity.NodeID, s.identity.NodeToken, revision.ID, ConfigRevisionReport{
 			Status:               "failed",
 			FailedAt:             reportTime,
 			ErrorMessage:         errorMessage,
+			RuntimeMode:          s.status.RuntimeMode,
+			RuntimeDesiredState:  s.status.RuntimeDesiredState,
+			RuntimeState:         s.status.RuntimeState,
+			LastDryRunStatus:     s.status.LastDryRunStatus,
+			LastRuntimeAttempt:   s.status.LastRuntimeAttemptStatus,
+			LastRuntimePrepared:  s.status.LastRuntimePrepared,
+			LastRuntimeAt:        s.status.LastRuntimeTransitionAt,
+			LastRuntimeError:     s.status.LastRuntimeError,
 			LastValidationStatus: "failed",
 			LastValidationError:  errorMessage,
 			LastValidationAt:     reportTime,
@@ -257,6 +345,14 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 		Status:               "applied",
 		AppliedAt:            reportTime,
 		ActiveRevision:       revision.RevisionNumber,
+		RuntimeMode:          s.status.RuntimeMode,
+		RuntimeDesiredState:  s.status.RuntimeDesiredState,
+		RuntimeState:         s.status.RuntimeState,
+		LastDryRunStatus:     s.status.LastDryRunStatus,
+		LastRuntimeAttempt:   s.status.LastRuntimeAttemptStatus,
+		LastRuntimePrepared:  s.status.LastRuntimePrepared,
+		LastRuntimeAt:        s.status.LastRuntimeTransitionAt,
+		LastRuntimeError:     s.status.LastRuntimeError,
 		LastValidationStatus: "applied",
 		LastValidationAt:     reportTime,
 		LastAppliedRevision:  s.status.LastAppliedRevision,
@@ -266,6 +362,16 @@ func (s *Service) PollPendingConfigRevision(ctx context.Context, client PendingC
 		return false, err
 	}
 	return true, nil
+}
+
+func dryRunStatusForError(err error, validator XrayDryRunValidator) string {
+	if errors.Is(err, ErrXrayDryRunFailed) {
+		return DryRunStatusFailed
+	}
+	if validator != nil {
+		return DryRunStatusPassed
+	}
+	return DryRunStatusNotConfigured
 }
 
 type ConfigArtifact struct {
@@ -459,17 +565,24 @@ func (s *Service) ActivateStagedConfigRevision(revision ConfigRevision, artifact
 	}
 
 	state := map[string]any{
-		"active_revision":             revision.RevisionNumber,
-		"staged_revision":             revision.RevisionNumber,
-		"last_applied_revision":       revision.RevisionNumber,
-		"rollback_candidate_revision": revision.RollbackTargetRevision,
-		"config_artifact_path":        artifact.ConfigPath,
-		"metadata_artifact_path":      artifact.MetadataPath,
-		"revision_config_path":        artifact.RevisionConfigPath,
-		"revision_metadata_path":      artifact.RevisionMetadataPath,
-		"operation_kind":              stringFromBundle(revision.Bundle, "operation_kind"),
-		"source_revision_id":          stringFromBundle(revision.Bundle, "source_revision_id"),
-		"source_revision_number":      numberFromBundle(revision.Bundle, "source_revision_number"),
+		"active_revision":                revision.RevisionNumber,
+		"staged_revision":                revision.RevisionNumber,
+		"last_applied_revision":          revision.RevisionNumber,
+		"rollback_candidate_revision":    revision.RollbackTargetRevision,
+		"runtime_mode":                   s.status.RuntimeMode,
+		"runtime_desired_state":          s.status.RuntimeDesiredState,
+		"runtime_state":                  RuntimeStateActiveConfigReady,
+		"last_dry_run_status":            dryRunStatusForValidator(s.xrayDryRun),
+		"last_runtime_attempt_status":    RuntimeAttemptSkipped,
+		"last_runtime_prepared_revision": revision.RevisionNumber,
+		"process_control":                "unavailable",
+		"config_artifact_path":           artifact.ConfigPath,
+		"metadata_artifact_path":         artifact.MetadataPath,
+		"revision_config_path":           artifact.RevisionConfigPath,
+		"revision_metadata_path":         artifact.RevisionMetadataPath,
+		"operation_kind":                 stringFromBundle(revision.Bundle, "operation_kind"),
+		"source_revision_id":             stringFromBundle(revision.Bundle, "source_revision_id"),
+		"source_revision_number":         numberFromBundle(revision.Bundle, "source_revision_number"),
 	}
 	stateBody, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {

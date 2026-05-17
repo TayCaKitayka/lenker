@@ -35,6 +35,14 @@ type Node struct {
 	AgentVersion         string     `json:"agent_version"`
 	XrayVersion          string     `json:"xray_version"`
 	ActiveRevision       int        `json:"active_revision"`
+	RuntimeMode          string     `json:"runtime_mode"`
+	RuntimeDesiredState  string     `json:"runtime_desired_state"`
+	RuntimeState         string     `json:"runtime_state"`
+	LastDryRunStatus     string     `json:"last_dry_run_status"`
+	LastRuntimeAttempt   string     `json:"last_runtime_attempt_status"`
+	LastRuntimePrepared  int        `json:"last_runtime_prepared_revision"`
+	LastRuntimeAt        *time.Time `json:"last_runtime_transition_at"`
+	LastRuntimeError     string     `json:"last_runtime_error"`
 	LastValidationStatus string     `json:"last_validation_status"`
 	LastValidationError  string     `json:"last_validation_error"`
 	LastValidationAt     *time.Time `json:"last_validation_at"`
@@ -82,6 +90,14 @@ type HeartbeatInput struct {
 	Status                 string
 	ActiveRevision         int
 	RuntimeMetadataPresent bool
+	RuntimeMode            string
+	RuntimeDesiredState    string
+	RuntimeState           string
+	LastDryRunStatus       string
+	LastRuntimeAttempt     string
+	LastRuntimePrepared    int
+	LastRuntimeAt          time.Time
+	LastRuntimeError       string
 	LastValidationStatus   string
 	LastValidationError    string
 	LastValidationAt       time.Time
@@ -127,6 +143,14 @@ type ReportConfigRevisionInput struct {
 	FailedAt               time.Time
 	ErrorMessage           string
 	RuntimeMetadataPresent bool
+	RuntimeMode            string
+	RuntimeDesiredState    string
+	RuntimeState           string
+	LastDryRunStatus       string
+	LastRuntimeAttempt     string
+	LastRuntimePrepared    int
+	LastRuntimeAt          time.Time
+	LastRuntimeError       string
 	LastValidationStatus   string
 	LastValidationError    string
 	LastValidationAt       time.Time
@@ -163,7 +187,7 @@ func NewNodesRepository(db *sql.DB) NodesRepository {
 
 func (r *nodesRepository) List(ctx context.Context) ([]Node, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		ORDER BY created_at DESC
 	`)
@@ -188,7 +212,7 @@ func (r *nodesRepository) List(ctx context.Context) ([]Node, error) {
 
 func (r *nodesRepository) FindByID(ctx context.Context, id string) (Node, error) {
 	node, err := scanNode(r.db.QueryRowContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		WHERE id = $1
 	`, id))
@@ -308,7 +332,7 @@ func (r *nodesRepository) Register(ctx context.Context, input RegisterNodeInput)
 		    updated_at = $5
 		WHERE id = $1
 		  AND status IN ('pending', 'active', 'unhealthy', 'drained')
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 	`, tokenNodeID, input.Hostname, input.AgentVersion, HashNodeToken(nodeToken), now))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -348,68 +372,38 @@ func (r *nodesRepository) RecordHeartbeat(ctx context.Context, input HeartbeatIn
 		return Node{}, ErrInvalidNodeStatus
 	}
 
-	var node Node
-	var lastHealthAt sql.NullTime
-	var lastSeenAt sql.NullTime
-	var registeredAt sql.NullTime
-	var lastValidationAt sql.NullTime
-
-	err := r.db.QueryRowContext(ctx, `
+	node, err := scanNode(r.db.QueryRowContext(ctx, `
 		UPDATE nodes
 		SET status = CASE WHEN drain_state = 'drained' THEN 'drained' ELSE $3 END,
 		    agent_version = $4,
 		    active_revision = $5,
-		    last_validation_status = CASE WHEN $6 THEN $7 ELSE last_validation_status END,
-		    last_validation_error = CASE WHEN $6 THEN $8 ELSE last_validation_error END,
-		    last_validation_at = CASE WHEN $6 THEN $9 ELSE last_validation_at END,
-		    last_applied_revision = CASE WHEN $6 THEN $10 ELSE last_applied_revision END,
-		    active_config_path = CASE WHEN $6 THEN $11 ELSE active_config_path END,
-		    last_health_at = $12,
-		    last_seen_at = $12,
+		    runtime_mode = CASE WHEN $6 THEN $7 ELSE runtime_mode END,
+		    runtime_desired_state = CASE WHEN $6 THEN $8 ELSE runtime_desired_state END,
+		    runtime_state = CASE WHEN $6 THEN $9 ELSE runtime_state END,
+		    last_dry_run_status = CASE WHEN $6 THEN $10 ELSE last_dry_run_status END,
+		    last_runtime_attempt_status = CASE WHEN $6 THEN $11 ELSE last_runtime_attempt_status END,
+		    last_runtime_prepared_revision = CASE WHEN $6 THEN $12 ELSE last_runtime_prepared_revision END,
+		    last_runtime_transition_at = CASE WHEN $6 THEN $13 ELSE last_runtime_transition_at END,
+		    last_runtime_error = CASE WHEN $6 THEN $14 ELSE last_runtime_error END,
+		    last_validation_status = CASE WHEN $6 THEN $15 ELSE last_validation_status END,
+		    last_validation_error = CASE WHEN $6 THEN $16 ELSE last_validation_error END,
+		    last_validation_at = CASE WHEN $6 THEN $17 ELSE last_validation_at END,
+		    last_applied_revision = CASE WHEN $6 THEN $18 ELSE last_applied_revision END,
+		    active_config_path = CASE WHEN $6 THEN $19 ELSE active_config_path END,
+		    last_health_at = $20,
+		    last_seen_at = $20,
 		    updated_at = now()
 		WHERE id = $1
 		  AND auth_token_hash = $2
 		  AND registered_at IS NOT NULL
 		  AND status != 'disabled'
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
-	`, input.NodeID, HashNodeToken(input.NodeToken), input.Status, input.AgentVersion, input.ActiveRevision, input.RuntimeMetadataPresent, normalizeValidationStatus(input.LastValidationStatus), strings.TrimSpace(input.LastValidationError), nullableTime(input.LastValidationAt), input.LastAppliedRevision, strings.TrimSpace(input.ActiveConfigPath), input.SentAt).Scan(
-		&node.ID,
-		&node.Name,
-		&node.Region,
-		&node.CountryCode,
-		&node.Hostname,
-		&node.Status,
-		&node.DrainState,
-		&node.AgentVersion,
-		&node.XrayVersion,
-		&node.ActiveRevision,
-		&node.LastValidationStatus,
-		&node.LastValidationError,
-		&lastValidationAt,
-		&node.LastAppliedRevision,
-		&node.ActiveConfigPath,
-		&lastHealthAt,
-		&lastSeenAt,
-		&registeredAt,
-		&node.UpdatedAt,
-	)
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+	`, input.NodeID, HashNodeToken(input.NodeToken), input.Status, input.AgentVersion, input.ActiveRevision, input.RuntimeMetadataPresent, normalizeRuntimeMode(input.RuntimeMode), normalizeRuntimeDesiredState(input.RuntimeDesiredState), normalizeRuntimeState(input.RuntimeState), normalizeDryRunStatus(input.LastDryRunStatus), normalizeRuntimeAttempt(input.LastRuntimeAttempt), input.LastRuntimePrepared, nullableTime(input.LastRuntimeAt), strings.TrimSpace(input.LastRuntimeError), normalizeValidationStatus(input.LastValidationStatus), strings.TrimSpace(input.LastValidationError), nullableTime(input.LastValidationAt), input.LastAppliedRevision, strings.TrimSpace(input.ActiveConfigPath), input.SentAt))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Node{}, ErrNotFound
 		}
 		return Node{}, err
-	}
-	if lastValidationAt.Valid {
-		node.LastValidationAt = &lastValidationAt.Time
-	}
-	if lastHealthAt.Valid {
-		node.LastHealthAt = &lastHealthAt.Time
-	}
-	if lastSeenAt.Valid {
-		node.LastSeenAt = &lastSeenAt.Time
-	}
-	if registeredAt.Valid {
-		node.RegisteredAt = &registeredAt.Time
 	}
 	return node, nil
 }
@@ -861,6 +855,18 @@ func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input Report
 	validationAt = validationAt.UTC()
 	lastAppliedRevision := input.LastAppliedRevision
 	activeConfigPath := strings.TrimSpace(input.ActiveConfigPath)
+	runtimeMode := normalizeRuntimeMode(input.RuntimeMode)
+	runtimeDesiredState := normalizeRuntimeDesiredState(input.RuntimeDesiredState)
+	runtimeState := normalizeRuntimeState(input.RuntimeState)
+	lastDryRunStatus := normalizeDryRunStatus(input.LastDryRunStatus)
+	lastRuntimeAttempt := normalizeRuntimeAttempt(input.LastRuntimeAttempt)
+	lastRuntimePrepared := input.LastRuntimePrepared
+	lastRuntimeAt := input.LastRuntimeAt
+	if lastRuntimeAt.IsZero() {
+		lastRuntimeAt = reportedAt
+	}
+	lastRuntimeAt = lastRuntimeAt.UTC()
+	lastRuntimeError := strings.TrimSpace(input.LastRuntimeError)
 
 	var revision ConfigRevision
 	if input.Status == "applied" {
@@ -913,33 +919,49 @@ func (r *nodesRepository) ReportConfigRevision(ctx context.Context, input Report
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE nodes
 			SET active_revision = $2,
-			    last_validation_status = $3,
+			    runtime_mode = $3,
+			    runtime_desired_state = $4,
+			    runtime_state = $5,
+			    last_dry_run_status = $6,
+			    last_runtime_attempt_status = $7,
+			    last_runtime_prepared_revision = $8,
+			    last_runtime_transition_at = $9,
+			    last_runtime_error = $10,
+			    last_validation_status = $11,
 			    last_validation_error = '',
-			    last_validation_at = $4,
-			    last_applied_revision = $5,
-			    active_config_path = $6,
-			    updated_at = $4
+			    last_validation_at = $12,
+			    last_applied_revision = $13,
+			    active_config_path = $14,
+			    updated_at = $12
 			WHERE id = $1
-			  AND auth_token_hash = $7
+			  AND auth_token_hash = $15
 			  AND registered_at IS NOT NULL
 			  AND status != 'disabled'
-		`, input.NodeID, revision.RevisionNumber, validationStatus, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
+		`, input.NodeID, revision.RevisionNumber, runtimeMode, runtimeDesiredState, runtimeState, lastDryRunStatus, lastRuntimeAttempt, lastRuntimePrepared, lastRuntimeAt, lastRuntimeError, validationStatus, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
 			return ConfigRevision{}, err
 		}
 	} else {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE nodes
-			SET last_validation_status = $2,
-			    last_validation_error = $3,
-			    last_validation_at = $4,
-			    last_applied_revision = CASE WHEN $5 > 0 THEN $5 ELSE last_applied_revision END,
-			    active_config_path = CASE WHEN $6 <> '' THEN $6 ELSE active_config_path END,
-			    updated_at = $4
+			SET runtime_mode = $2,
+			    runtime_desired_state = $3,
+			    runtime_state = $4,
+			    last_dry_run_status = $5,
+			    last_runtime_attempt_status = $6,
+			    last_runtime_prepared_revision = CASE WHEN $7 > 0 THEN $7 ELSE last_runtime_prepared_revision END,
+			    last_runtime_transition_at = $8,
+			    last_runtime_error = $9,
+			    last_validation_status = $10,
+			    last_validation_error = $11,
+			    last_validation_at = $12,
+			    last_applied_revision = CASE WHEN $13 > 0 THEN $13 ELSE last_applied_revision END,
+			    active_config_path = CASE WHEN $14 <> '' THEN $14 ELSE active_config_path END,
+			    updated_at = $12
 			WHERE id = $1
-			  AND auth_token_hash = $7
+			  AND auth_token_hash = $15
 			  AND registered_at IS NOT NULL
 			  AND status != 'disabled'
-		`, input.NodeID, validationStatus, validationError, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
+		`, input.NodeID, runtimeMode, runtimeDesiredState, runtimeState, lastDryRunStatus, lastRuntimeAttempt, lastRuntimePrepared, lastRuntimeAt, lastRuntimeError, validationStatus, validationError, validationAt, lastAppliedRevision, activeConfigPath, HashNodeToken(input.NodeToken)); err != nil {
 			return ConfigRevision{}, err
 		}
 	}
@@ -994,6 +1016,7 @@ type rowScanner interface {
 
 func scanNode(row rowScanner) (Node, error) {
 	var node Node
+	var lastRuntimeAt sql.NullTime
 	var lastValidationAt sql.NullTime
 	var lastHealthAt sql.NullTime
 	var lastSeenAt sql.NullTime
@@ -1009,6 +1032,14 @@ func scanNode(row rowScanner) (Node, error) {
 		&node.AgentVersion,
 		&node.XrayVersion,
 		&node.ActiveRevision,
+		&node.RuntimeMode,
+		&node.RuntimeDesiredState,
+		&node.RuntimeState,
+		&node.LastDryRunStatus,
+		&node.LastRuntimeAttempt,
+		&node.LastRuntimePrepared,
+		&lastRuntimeAt,
+		&node.LastRuntimeError,
 		&node.LastValidationStatus,
 		&node.LastValidationError,
 		&lastValidationAt,
@@ -1021,6 +1052,9 @@ func scanNode(row rowScanner) (Node, error) {
 	)
 	if err != nil {
 		return Node{}, err
+	}
+	if lastRuntimeAt.Valid {
+		node.LastRuntimeAt = &lastRuntimeAt.Time
 	}
 	if lastValidationAt.Valid {
 		node.LastValidationAt = &lastValidationAt.Time
@@ -1045,6 +1079,59 @@ func normalizeValidationStatus(status string) string {
 		return "failed"
 	default:
 		return ""
+	}
+}
+
+func normalizeRuntimeMode(value string) string {
+	switch strings.TrimSpace(value) {
+	case "dry-run-only":
+		return "dry-run-only"
+	case "future-process-managed":
+		return "future-process-managed"
+	default:
+		return "no-process"
+	}
+}
+
+func normalizeRuntimeDesiredState(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "validated-config-ready"
+	}
+	return strings.TrimSpace(value)
+}
+
+func normalizeRuntimeState(value string) string {
+	switch strings.TrimSpace(value) {
+	case "active_config_ready":
+		return "active_config_ready"
+	case "validation_failed":
+		return "validation_failed"
+	case "prepare_failed":
+		return "prepare_failed"
+	default:
+		return "not_prepared"
+	}
+}
+
+func normalizeDryRunStatus(value string) string {
+	switch strings.TrimSpace(value) {
+	case "passed":
+		return "passed"
+	case "failed":
+		return "failed"
+	default:
+		return "not_configured"
+	}
+}
+
+func normalizeRuntimeAttempt(value string) string {
+	switch strings.TrimSpace(value) {
+	case "ready":
+		return "ready"
+	case "failed":
+		return "failed"
+	default:
+		return "skipped"
 	}
 }
 
@@ -1120,7 +1207,7 @@ func (r *nodesRepository) transition(ctx context.Context, id string, decide func
 	defer tx.Rollback()
 
 	node, err := scanNode(tx.QueryRowContext(ctx, `
-		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		SELECT id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 		FROM nodes
 		WHERE id = $1
 		FOR UPDATE
@@ -1149,7 +1236,7 @@ func (r *nodesRepository) transition(ctx context.Context, id string, decide func
 		    drain_state = $3,
 		    updated_at = now()
 		WHERE id = $1
-		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
+		RETURNING id::text, name, region, country_code, hostname, status, drain_state, agent_version, xray_version, active_revision, runtime_mode, runtime_desired_state, runtime_state, last_dry_run_status, last_runtime_attempt_status, last_runtime_prepared_revision, last_runtime_transition_at, last_runtime_error, last_validation_status, last_validation_error, last_validation_at, last_applied_revision, active_config_path, last_health_at, last_seen_at, registered_at, updated_at
 	`, id, next.Status, next.DrainState))
 	if err != nil {
 		return Node{}, err

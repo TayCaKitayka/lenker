@@ -27,6 +27,14 @@ type Status struct {
 	PanelURL                  string    `json:"panel_url,omitempty"`
 	LastHeartbeatAt           time.Time `json:"last_heartbeat_at,omitempty"`
 	XrayDryRunEnabled         bool      `json:"xray_dry_run_enabled"`
+	RuntimeMode               string    `json:"runtime_mode"`
+	RuntimeDesiredState       string    `json:"runtime_desired_state"`
+	RuntimeState              string    `json:"runtime_state"`
+	LastDryRunStatus          string    `json:"last_dry_run_status,omitempty"`
+	LastRuntimeAttemptStatus  string    `json:"last_runtime_attempt_status,omitempty"`
+	LastRuntimePrepared       int       `json:"last_runtime_prepared_revision"`
+	LastRuntimeTransitionAt   time.Time `json:"last_runtime_transition_at,omitempty"`
+	LastRuntimeError          string    `json:"last_runtime_error,omitempty"`
 	ActiveRevision            int       `json:"active_revision"`
 	LastAppliedRevision       int       `json:"last_applied_revision"`
 	LastRollbackRevision      int       `json:"last_rollback_revision"`
@@ -59,6 +67,14 @@ type HeartbeatPayload struct {
 	AgentVersion         string    `json:"agent_version"`
 	Status               string    `json:"status"`
 	ActiveRevision       int       `json:"active_revision"`
+	RuntimeMode          string    `json:"runtime_mode,omitempty"`
+	RuntimeDesiredState  string    `json:"runtime_desired_state,omitempty"`
+	RuntimeState         string    `json:"runtime_state,omitempty"`
+	LastDryRunStatus     string    `json:"last_dry_run_status,omitempty"`
+	LastRuntimeAttempt   string    `json:"last_runtime_attempt_status,omitempty"`
+	LastRuntimePrepared  int       `json:"last_runtime_prepared_revision,omitempty"`
+	LastRuntimeAt        time.Time `json:"last_runtime_transition_at,omitempty"`
+	LastRuntimeError     string    `json:"last_runtime_error,omitempty"`
 	LastValidationStatus string    `json:"last_validation_status,omitempty"`
 	LastValidationError  string    `json:"last_validation_error,omitempty"`
 	LastValidationAt     time.Time `json:"last_validation_at,omitempty"`
@@ -87,6 +103,14 @@ type ConfigRevisionReport struct {
 	FailedAt             time.Time `json:"failed_at,omitempty"`
 	ErrorMessage         string    `json:"error_message,omitempty"`
 	ActiveRevision       int       `json:"active_revision,omitempty"`
+	RuntimeMode          string    `json:"runtime_mode,omitempty"`
+	RuntimeDesiredState  string    `json:"runtime_desired_state,omitempty"`
+	RuntimeState         string    `json:"runtime_state,omitempty"`
+	LastDryRunStatus     string    `json:"last_dry_run_status,omitempty"`
+	LastRuntimeAttempt   string    `json:"last_runtime_attempt_status,omitempty"`
+	LastRuntimePrepared  int       `json:"last_runtime_prepared_revision,omitempty"`
+	LastRuntimeAt        time.Time `json:"last_runtime_transition_at,omitempty"`
+	LastRuntimeError     string    `json:"last_runtime_error,omitempty"`
 	LastValidationStatus string    `json:"last_validation_status,omitempty"`
 	LastValidationError  string    `json:"last_validation_error,omitempty"`
 	LastValidationAt     time.Time `json:"last_validation_at,omitempty"`

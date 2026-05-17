@@ -107,6 +107,14 @@ Node-agent contract routes:
 - `GET /api/v1/nodes/{id}/config-revisions/pending` accepts the same node token and returns latest pending signed revision metadata for that node
 - `POST /api/v1/nodes/{id}/config-revisions/{revisionId}/report` accepts the same node token and records `applied` or `failed` revision status
 
+Node heartbeat and revision reports may include read-only runtime preparation
+metadata from node-agent: `runtime_mode`, `runtime_desired_state`,
+`runtime_state`, `last_dry_run_status`, `last_runtime_attempt_status`,
+`last_runtime_prepared_revision`, `last_runtime_transition_at`, and
+`last_runtime_error`. These fields describe the no-process/dry-run-only local
+runtime skeleton and do not imply that panel-api starts, reloads, restarts, or
+supervises Xray.
+
 Use the token returned by admin login:
 
 ```http

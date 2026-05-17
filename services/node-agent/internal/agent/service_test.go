@@ -47,6 +47,9 @@ func TestRegisteredIdentityStartsActive(t *testing.T) {
 	if !status.XrayDryRunEnabled {
 		t.Fatalf("expected xray dry-run enabled status")
 	}
+	if status.RuntimeMode != RuntimeModeDryRunOnly || status.RuntimeState != RuntimeStateNotPrepared || status.RuntimeDesiredState != RuntimeDesiredStateConfigReady {
+		t.Fatalf("expected dry-run-only no-process runtime skeleton state, got %#v", status)
+	}
 }
 
 func TestBuildHeartbeatPayloadRequiresNodeID(t *testing.T) {
@@ -66,6 +69,13 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	service.status.LastValidationAt = now.Add(-time.Minute)
 	service.status.LastAppliedRevision = 3
 	service.status.ConfigArtifactPath = "/var/lib/lenker/node-agent/active/config.json"
+	service.status.RuntimeMode = RuntimeModeNoProcess
+	service.status.RuntimeDesiredState = RuntimeDesiredStateConfigReady
+	service.status.RuntimeState = RuntimeStateActiveConfigReady
+	service.status.LastDryRunStatus = DryRunStatusNotConfigured
+	service.status.LastRuntimeAttemptStatus = RuntimeAttemptSkipped
+	service.status.LastRuntimePrepared = 3
+	service.status.LastRuntimeTransitionAt = now.Add(-time.Minute)
 
 	payload, err := service.BuildHeartbeatPayload(now)
 	if err != nil {
@@ -82,6 +92,9 @@ func TestBuildHeartbeatPayload(t *testing.T) {
 	}
 	if payload.LastAppliedRevision != 3 || payload.ActiveConfigPath == "" {
 		t.Fatalf("expected runtime readiness metadata in heartbeat: %#v", payload)
+	}
+	if payload.RuntimeMode != RuntimeModeNoProcess || payload.RuntimeState != RuntimeStateActiveConfigReady || payload.LastRuntimePrepared != 3 {
+		t.Fatalf("expected runtime supervisor metadata in heartbeat: %#v", payload)
 	}
 }
 
@@ -355,8 +368,14 @@ func TestPollPendingConfigRevisionReportsApplied(t *testing.T) {
 	if client.report.LastValidationStatus != "applied" || client.report.LastAppliedRevision != 4 || client.report.ActiveConfigPath == "" {
 		t.Fatalf("expected applied runtime metadata report, got %#v", client.report)
 	}
+	if client.report.RuntimeMode != RuntimeModeNoProcess || client.report.RuntimeState != RuntimeStateActiveConfigReady || client.report.LastRuntimePrepared != 4 {
+		t.Fatalf("expected applied runtime supervisor metadata report, got %#v", client.report)
+	}
 	if service.Status().ActiveRevision != 4 || service.Status().LastAppliedRevision != 4 {
 		t.Fatalf("expected active revision in status: %#v", service.Status())
+	}
+	if service.Status().RuntimeState != RuntimeStateActiveConfigReady || service.Status().LastRuntimeAttemptStatus != RuntimeAttemptSkipped {
+		t.Fatalf("expected active config ready runtime state: %#v", service.Status())
 	}
 	if service.Status().LastValidationStatus != "applied" || !service.Status().LastValidationAt.Equal(now) {
 		t.Fatalf("expected applied validation status: %#v", service.Status())
@@ -396,6 +415,9 @@ func TestPollPendingConfigRevisionDryRunSuccessContinuesApply(t *testing.T) {
 	}
 	if service.Status().ActiveRevision != 4 || service.Status().ConfigArtifactPath == "" {
 		t.Fatalf("expected active revision and artifact after dry-run success: %#v", service.Status())
+	}
+	if service.Status().RuntimeMode != RuntimeModeDryRunOnly || service.Status().LastDryRunStatus != DryRunStatusPassed {
+		t.Fatalf("expected dry-run-only runtime success state: %#v", service.Status())
 	}
 }
 
@@ -442,6 +464,9 @@ func TestPollPendingConfigRevisionDryRunFailureReportsFailedAndKeepsActive(t *te
 	}
 	if service.Status().LastValidationStatus != "failed" || service.Status().LastValidationError != "xray_dry_run_failed:invalid_inbound" {
 		t.Fatalf("expected failed validation status: %#v", service.Status())
+	}
+	if service.Status().RuntimeState != RuntimeStateValidationFailed || service.Status().LastDryRunStatus != DryRunStatusFailed {
+		t.Fatalf("expected failed dry-run runtime state: %#v", service.Status())
 	}
 }
 
@@ -642,8 +667,16 @@ func TestApplyConfigRevisionWritesLocalArtifacts(t *testing.T) {
 		t.Fatalf("expected staged config artifact: %v", err)
 	}
 	statePath := filepath.Join(filepath.Dir(filepath.Dir(status.ConfigArtifactPath)), "state.json")
-	if _, err := os.Stat(statePath); err != nil {
+	stateBody, err := os.ReadFile(statePath)
+	if err != nil {
 		t.Fatalf("expected state artifact: %v", err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(stateBody, &state); err != nil {
+		t.Fatalf("expected state json: %v", err)
+	}
+	if state["runtime_mode"] != RuntimeModeNoProcess || state["runtime_state"] != RuntimeStateActiveConfigReady || state["process_control"] != "unavailable" {
+		t.Fatalf("expected runtime state in state artifact: %#v", state)
 	}
 }
 

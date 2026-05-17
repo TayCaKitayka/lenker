@@ -307,6 +307,14 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		AgentVersion         string    `json:"agent_version"`
 		Status               string    `json:"status"`
 		ActiveRevision       int       `json:"active_revision"`
+		RuntimeMode          string    `json:"runtime_mode"`
+		RuntimeDesiredState  string    `json:"runtime_desired_state"`
+		RuntimeState         string    `json:"runtime_state"`
+		LastDryRunStatus     string    `json:"last_dry_run_status"`
+		LastRuntimeAttempt   string    `json:"last_runtime_attempt_status"`
+		LastRuntimePrepared  int       `json:"last_runtime_prepared_revision"`
+		LastRuntimeAt        time.Time `json:"last_runtime_transition_at"`
+		LastRuntimeError     string    `json:"last_runtime_error"`
 		LastValidationStatus string    `json:"last_validation_status"`
 		LastValidationError  string    `json:"last_validation_error"`
 		LastValidationAt     time.Time `json:"last_validation_at"`
@@ -342,10 +350,48 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "last_validation_status must be applied or failed")
 		return
 	}
+	runtimeMode := strings.TrimSpace(request.RuntimeMode)
+	if runtimeMode != "" && runtimeMode != "no-process" && runtimeMode != "dry-run-only" && runtimeMode != "future-process-managed" {
+		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "runtime_mode must be no-process, dry-run-only, or future-process-managed")
+		return
+	}
+	runtimeState := strings.TrimSpace(request.RuntimeState)
+	if runtimeState == "" && lastValidationStatus == "applied" {
+		runtimeState = "active_config_ready"
+	}
+	if runtimeState == "" && lastValidationStatus == "failed" {
+		runtimeState = "validation_failed"
+	}
+	lastRuntimeAttempt := strings.TrimSpace(request.LastRuntimeAttempt)
+	if lastRuntimeAttempt == "" && lastValidationStatus == "applied" {
+		lastRuntimeAttempt = "skipped"
+	}
+	if lastRuntimeAttempt == "" && lastValidationStatus == "failed" {
+		lastRuntimeAttempt = "failed"
+	}
+	lastRuntimeError := strings.TrimSpace(request.LastRuntimeError)
+	if lastRuntimeError == "" && lastValidationStatus == "failed" {
+		lastRuntimeError = strings.TrimSpace(request.LastValidationError)
+	}
+	lastRuntimePrepared := request.LastRuntimePrepared
+	if lastRuntimePrepared <= 0 && lastValidationStatus == "applied" {
+		lastRuntimePrepared = request.LastAppliedRevision
+		if lastRuntimePrepared <= 0 {
+			lastRuntimePrepared = request.ActiveRevision
+		}
+	}
 	if request.SentAt.IsZero() {
 		request.SentAt = time.Now().UTC()
 	}
-	runtimeMetadataPresent := lastValidationStatus != "" ||
+	runtimeMetadataPresent := runtimeMode != "" ||
+		strings.TrimSpace(request.RuntimeDesiredState) != "" ||
+		runtimeState != "" ||
+		strings.TrimSpace(request.LastDryRunStatus) != "" ||
+		lastRuntimeAttempt != "" ||
+		lastRuntimePrepared > 0 ||
+		!request.LastRuntimeAt.IsZero() ||
+		lastRuntimeError != "" ||
+		lastValidationStatus != "" ||
 		strings.TrimSpace(request.LastValidationError) != "" ||
 		!request.LastValidationAt.IsZero() ||
 		request.LastAppliedRevision > 0 ||
@@ -358,6 +404,14 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		Status:                 status,
 		ActiveRevision:         request.ActiveRevision,
 		RuntimeMetadataPresent: runtimeMetadataPresent,
+		RuntimeMode:            runtimeMode,
+		RuntimeDesiredState:    strings.TrimSpace(request.RuntimeDesiredState),
+		RuntimeState:           runtimeState,
+		LastDryRunStatus:       strings.TrimSpace(request.LastDryRunStatus),
+		LastRuntimeAttempt:     lastRuntimeAttempt,
+		LastRuntimePrepared:    lastRuntimePrepared,
+		LastRuntimeAt:          request.LastRuntimeAt,
+		LastRuntimeError:       lastRuntimeError,
 		LastValidationStatus:   lastValidationStatus,
 		LastValidationError:    strings.TrimSpace(request.LastValidationError),
 		LastValidationAt:       request.LastValidationAt,
@@ -386,16 +440,24 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 
 	h.recordNode(r, audit.ActionNodeHeartbeat, node.ID, audit.OutcomeSuccess, "")
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: map[string]any{
-		"node_id":                node.ID,
-		"status":                 node.Status,
-		"drain_state":            node.DrainState,
-		"active_revision":        node.ActiveRevision,
-		"last_validation_status": node.LastValidationStatus,
-		"last_validation_error":  node.LastValidationError,
-		"last_validation_at":     node.LastValidationAt,
-		"last_applied_revision":  node.LastAppliedRevision,
-		"active_config_path":     node.ActiveConfigPath,
-		"last_seen_at":           node.LastSeenAt,
+		"node_id":                        node.ID,
+		"status":                         node.Status,
+		"drain_state":                    node.DrainState,
+		"active_revision":                node.ActiveRevision,
+		"runtime_mode":                   node.RuntimeMode,
+		"runtime_desired_state":          node.RuntimeDesiredState,
+		"runtime_state":                  node.RuntimeState,
+		"last_dry_run_status":            node.LastDryRunStatus,
+		"last_runtime_attempt_status":    node.LastRuntimeAttempt,
+		"last_runtime_prepared_revision": node.LastRuntimePrepared,
+		"last_runtime_transition_at":     node.LastRuntimeAt,
+		"last_runtime_error":             node.LastRuntimeError,
+		"last_validation_status":         node.LastValidationStatus,
+		"last_validation_error":          node.LastValidationError,
+		"last_validation_at":             node.LastValidationAt,
+		"last_applied_revision":          node.LastAppliedRevision,
+		"active_config_path":             node.ActiveConfigPath,
+		"last_seen_at":                   node.LastSeenAt,
 	}})
 }
 
@@ -455,6 +517,14 @@ func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
 		FailedAt             time.Time `json:"failed_at"`
 		ErrorMessage         string    `json:"error_message"`
 		ActiveRevision       int       `json:"active_revision"`
+		RuntimeMode          string    `json:"runtime_mode"`
+		RuntimeDesiredState  string    `json:"runtime_desired_state"`
+		RuntimeState         string    `json:"runtime_state"`
+		LastDryRunStatus     string    `json:"last_dry_run_status"`
+		LastRuntimeAttempt   string    `json:"last_runtime_attempt_status"`
+		LastRuntimePrepared  int       `json:"last_runtime_prepared_revision"`
+		LastRuntimeAt        time.Time `json:"last_runtime_transition_at"`
+		LastRuntimeError     string    `json:"last_runtime_error"`
 		LastValidationStatus string    `json:"last_validation_status"`
 		LastValidationError  string    `json:"last_validation_error"`
 		LastValidationAt     time.Time `json:"last_validation_at"`
@@ -480,6 +550,33 @@ func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
 	if lastValidationStatus == "" {
 		lastValidationStatus = status
 	}
+	runtimeMode := strings.TrimSpace(request.RuntimeMode)
+	if runtimeMode != "" && runtimeMode != "no-process" && runtimeMode != "dry-run-only" && runtimeMode != "future-process-managed" {
+		httpapi.WriteError(w, http.StatusBadRequest, "validation_error", "runtime_mode must be no-process, dry-run-only, or future-process-managed")
+		return
+	}
+	runtimeState := strings.TrimSpace(request.RuntimeState)
+	if runtimeState == "" && status == "applied" {
+		runtimeState = "active_config_ready"
+	}
+	if runtimeState == "" && status == "failed" {
+		runtimeState = "validation_failed"
+	}
+	lastRuntimeAttempt := strings.TrimSpace(request.LastRuntimeAttempt)
+	if lastRuntimeAttempt == "" && status == "applied" {
+		lastRuntimeAttempt = "skipped"
+	}
+	if lastRuntimeAttempt == "" && status == "failed" {
+		lastRuntimeAttempt = "failed"
+	}
+	lastRuntimeError := strings.TrimSpace(request.LastRuntimeError)
+	if lastRuntimeError == "" && status == "failed" {
+		lastRuntimeError = strings.TrimSpace(request.ErrorMessage)
+	}
+	lastRuntimePrepared := request.LastRuntimePrepared
+	if lastRuntimePrepared <= 0 && status == "applied" {
+		lastRuntimePrepared = request.ActiveRevision
+	}
 	lastValidationError := strings.TrimSpace(request.LastValidationError)
 	if lastValidationError == "" && status == "failed" {
 		lastValidationError = strings.TrimSpace(request.ErrorMessage)
@@ -502,6 +599,14 @@ func (h *Handler) ReportConfigRevision(w http.ResponseWriter, r *http.Request) {
 		FailedAt:               request.FailedAt,
 		ErrorMessage:           strings.TrimSpace(request.ErrorMessage),
 		RuntimeMetadataPresent: true,
+		RuntimeMode:            runtimeMode,
+		RuntimeDesiredState:    strings.TrimSpace(request.RuntimeDesiredState),
+		RuntimeState:           runtimeState,
+		LastDryRunStatus:       strings.TrimSpace(request.LastDryRunStatus),
+		LastRuntimeAttempt:     lastRuntimeAttempt,
+		LastRuntimePrepared:    lastRuntimePrepared,
+		LastRuntimeAt:          request.LastRuntimeAt,
+		LastRuntimeError:       lastRuntimeError,
 		LastValidationStatus:   lastValidationStatus,
 		LastValidationError:    lastValidationError,
 		LastValidationAt:       lastValidationAt,
@@ -584,25 +689,33 @@ func nodeSummaryResponse(node storage.Node) map[string]any {
 
 func nodeDetailResponse(node storage.Node) map[string]any {
 	return map[string]any{
-		"id":                     node.ID,
-		"name":                   node.Name,
-		"region":                 node.Region,
-		"country_code":           node.CountryCode,
-		"hostname":               node.Hostname,
-		"status":                 node.Status,
-		"drain_state":            node.DrainState,
-		"agent_version":          node.AgentVersion,
-		"xray_version":           node.XrayVersion,
-		"active_revision_id":     node.ActiveRevision,
-		"last_validation_status": node.LastValidationStatus,
-		"last_validation_error":  node.LastValidationError,
-		"last_validation_at":     node.LastValidationAt,
-		"last_applied_revision":  node.LastAppliedRevision,
-		"active_config_path":     node.ActiveConfigPath,
-		"last_health_at":         node.LastHealthAt,
-		"last_seen_at":           node.LastSeenAt,
-		"registered_at":          node.RegisteredAt,
-		"updated_at":             node.UpdatedAt,
+		"id":                             node.ID,
+		"name":                           node.Name,
+		"region":                         node.Region,
+		"country_code":                   node.CountryCode,
+		"hostname":                       node.Hostname,
+		"status":                         node.Status,
+		"drain_state":                    node.DrainState,
+		"agent_version":                  node.AgentVersion,
+		"xray_version":                   node.XrayVersion,
+		"active_revision_id":             node.ActiveRevision,
+		"runtime_mode":                   node.RuntimeMode,
+		"runtime_desired_state":          node.RuntimeDesiredState,
+		"runtime_state":                  node.RuntimeState,
+		"last_dry_run_status":            node.LastDryRunStatus,
+		"last_runtime_attempt_status":    node.LastRuntimeAttempt,
+		"last_runtime_prepared_revision": node.LastRuntimePrepared,
+		"last_runtime_transition_at":     node.LastRuntimeAt,
+		"last_runtime_error":             node.LastRuntimeError,
+		"last_validation_status":         node.LastValidationStatus,
+		"last_validation_error":          node.LastValidationError,
+		"last_validation_at":             node.LastValidationAt,
+		"last_applied_revision":          node.LastAppliedRevision,
+		"active_config_path":             node.ActiveConfigPath,
+		"last_health_at":                 node.LastHealthAt,
+		"last_seen_at":                   node.LastSeenAt,
+		"registered_at":                  node.RegisteredAt,
+		"updated_at":                     node.UpdatedAt,
 	}
 }
 

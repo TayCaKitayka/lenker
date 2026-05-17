@@ -90,6 +90,14 @@ func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
 		"0.1.0-dev",
 		"",
 		4,
+		"dry-run-only",
+		"validated-config-ready",
+		"validation_failed",
+		"failed",
+		"failed",
+		3,
+		now,
+		"xray_dry_run_failed:invalid_inbound",
 		"failed",
 		"xray_dry_run_failed:invalid_inbound",
 		now,
@@ -111,6 +119,12 @@ func TestScanNodeIncludesRuntimeValidationMetadata(t *testing.T) {
 	}
 	if node.LastAppliedRevision != 3 || node.ActiveConfigPath == "" {
 		t.Fatalf("unexpected runtime paths/revision: %#v", node)
+	}
+	if node.RuntimeMode != "dry-run-only" || node.RuntimeState != "validation_failed" || node.LastDryRunStatus != "failed" {
+		t.Fatalf("unexpected runtime supervisor metadata: %#v", node)
+	}
+	if node.LastRuntimeAt == nil || !node.LastRuntimeAt.Equal(now) || node.LastRuntimePrepared != 3 {
+		t.Fatalf("unexpected runtime transition metadata: %#v", node)
 	}
 }
 

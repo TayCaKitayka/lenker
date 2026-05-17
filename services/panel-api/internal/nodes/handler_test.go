@@ -414,6 +414,13 @@ func TestHeartbeatSuccess(t *testing.T) {
 		"agent_version": "0.1.0-dev",
 		"status": "active",
 		"active_revision": 7,
+		"runtime_mode": "dry-run-only",
+		"runtime_desired_state": "validated-config-ready",
+		"runtime_state": "active_config_ready",
+		"last_dry_run_status": "passed",
+		"last_runtime_attempt_status": "skipped",
+		"last_runtime_prepared_revision": 7,
+		"last_runtime_transition_at": "2026-05-16T01:02:03Z",
 		"last_validation_status": "applied",
 		"last_validation_at": "2026-05-16T01:02:03Z",
 		"last_applied_revision": 7,
@@ -434,8 +441,14 @@ func TestHeartbeatSuccess(t *testing.T) {
 	if !repo.heartbeat.RuntimeMetadataPresent || repo.heartbeat.LastValidationStatus != "applied" || repo.heartbeat.LastAppliedRevision != 7 {
 		t.Fatalf("expected runtime metadata heartbeat input: %#v", repo.heartbeat)
 	}
+	if repo.heartbeat.RuntimeMode != "dry-run-only" || repo.heartbeat.RuntimeState != "active_config_ready" || repo.heartbeat.LastDryRunStatus != "passed" {
+		t.Fatalf("expected runtime supervisor heartbeat input: %#v", repo.heartbeat)
+	}
 	if !strings.Contains(response.Body.String(), `"last_validation_status":"applied"`) {
 		t.Fatalf("expected runtime metadata in heartbeat response: %s", response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"runtime_state":"active_config_ready"`) {
+		t.Fatalf("expected runtime supervisor metadata in heartbeat response: %s", response.Body.String())
 	}
 }
 
@@ -815,6 +828,14 @@ func (r *fakeNodesRepository) RecordHeartbeat(ctx context.Context, input storage
 		DrainState:           "active",
 		AgentVersion:         input.AgentVersion,
 		ActiveRevision:       input.ActiveRevision,
+		RuntimeMode:          input.RuntimeMode,
+		RuntimeDesiredState:  input.RuntimeDesiredState,
+		RuntimeState:         input.RuntimeState,
+		LastDryRunStatus:     input.LastDryRunStatus,
+		LastRuntimeAttempt:   input.LastRuntimeAttempt,
+		LastRuntimePrepared:  input.LastRuntimePrepared,
+		LastRuntimeAt:        &now,
+		LastRuntimeError:     input.LastRuntimeError,
 		LastValidationStatus: input.LastValidationStatus,
 		LastValidationError:  input.LastValidationError,
 		LastValidationAt:     &now,
@@ -957,6 +978,14 @@ func testNode(id string) storage.Node {
 		DrainState:           "active",
 		AgentVersion:         "0.1.0-dev",
 		ActiveRevision:       3,
+		RuntimeMode:          "dry-run-only",
+		RuntimeDesiredState:  "validated-config-ready",
+		RuntimeState:         "validation_failed",
+		LastDryRunStatus:     "failed",
+		LastRuntimeAttempt:   "failed",
+		LastRuntimePrepared:  2,
+		LastRuntimeAt:        &now,
+		LastRuntimeError:     "xray_dry_run_failed:invalid_inbound",
 		LastValidationStatus: "failed",
 		LastValidationError:  "xray_dry_run_failed:invalid_inbound",
 		LastValidationAt:     &now,
