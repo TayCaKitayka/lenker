@@ -213,13 +213,16 @@ audit event platform.
 
 Current implementation note:
 
-The first client-delivery foundation is provider-side only: admins can request
-`GET /api/v1/subscriptions/{id}/access` to inspect a deterministic
-`subscription_access.v1alpha1` export for an active subscription on the single
-MVP `VLESS + Reality + XTLS Vision` path. The export reuses subscription, user,
-plan, and active node data and applies a documented MVP node-selection rule. It
-does not implement end-user app authentication, device binding, marketplace
-provider discovery, billing, or multi-protocol delivery.
+The first client-delivery foundation starts with a narrow token read boundary.
+Admins can request `GET /api/v1/subscriptions/{id}/access` to inspect a
+deterministic `subscription_access.v1alpha1` export for an active subscription
+on the single MVP `VLESS + Reality + XTLS Vision` path, and can issue a
+plaintext subscription access token once through
+`POST /api/v1/subscriptions/{id}/access-token`. Panel-api stores only the token
+hash and expiry. Consumers can call `GET /api/v1/client/subscription-access`
+with that Bearer token to read a redacted access export without an admin
+session. This does not implement full end-user app authentication, device
+binding, marketplace provider discovery, billing, or multi-protocol delivery.
 
 ### Boundary 4: Secrets and Persistent State
 

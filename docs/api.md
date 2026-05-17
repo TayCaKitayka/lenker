@@ -41,6 +41,14 @@ Base path:
 - email-first authentication
 - app session token after successful sign-in
 
+Current implementation note:
+
+Full email-first user authentication is still future work. The current
+consumer-facing foundation is deliberately narrower: a provider admin can issue
+a subscription access token for one active subscription, and a consumer can use
+that token only to read the redacted access export for the single MVP protocol
+path.
+
 ### Node API
 
 - `HTTPS + mTLS`
@@ -168,6 +176,21 @@ Return current and recent usage data.
 
 Return provider-side access export metadata for the supported client path.
 
+#### `POST /subscriptions/{subscriptionId}/access-token`
+
+Issue a plaintext subscription access token for the active subscription.
+
+Current implementation note:
+
+This admin-only endpoint stores only a SHA-256 token hash and returns the
+plaintext token once in the response. The token expires with the subscription
+and is accepted only by the consumer-facing access read endpoint.
+
+#### `GET /client/subscription-access`
+
+Return a redacted subscription access export using
+`Authorization: Bearer <subscription_access_token>`.
+
 Current implementation note:
 
 The implemented first product-layer slice exposes an admin-only read model for
@@ -180,6 +203,10 @@ non-draining node with a hostname that matches the subscription
 name, and id. The response includes a structured endpoint/client payload and a
 minimal VLESS URI. It is not an end-user auth flow, device-management flow,
 marketplace export, or multi-protocol delivery system.
+
+The client read endpoint uses the same deterministic export derivation but does
+not require or accept an admin session. It returns the same endpoint/client URI
+material without provider-internal user id, user label, or plan id fields.
 
 Conservative note:
 

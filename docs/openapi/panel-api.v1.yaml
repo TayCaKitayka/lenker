@@ -378,6 +378,31 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/subscriptions/{id}/access-token:
+    parameters:
+      - $ref: "#/components/parameters/ID"
+    post:
+      tags: [Subscriptions]
+      summary: Issue a subscription access token
+      responses:
+        "201":
+          description: Plaintext subscription access token created. The database stores only a token hash.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionAccessTokenEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Subscription access token cannot be created for this subscription state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/subscriptions/{id}/renew:
     parameters:
       - $ref: "#/components/parameters/ID"
@@ -403,6 +428,28 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/client/subscription-access:
+    get:
+      tags: [Subscriptions]
+      summary: Read subscription access with a subscription access token
+      description: Consumer-facing read boundary for the current single MVP VLESS Reality path. Uses Authorization Bearer subscription access tokens, not admin sessions.
+      responses:
+        "200":
+          description: Redacted subscription access export.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientSubscriptionAccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Subscription access export is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/v1/nodes:
@@ -1205,6 +1252,87 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/SubscriptionAccess"
+    SubscriptionAccessToken:
+      type: object
+      required: [subscription_id, access_token, expires_at, created_at]
+      properties:
+        subscription_id:
+          type: string
+        access_token:
+          type: string
+          description: Plaintext token returned only by the create-token response.
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    SubscriptionAccessTokenEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SubscriptionAccessToken"
+    ClientSubscriptionAccess:
+      type: object
+      required:
+        - export_kind
+        - subscription_id
+        - status
+        - protocol
+        - protocol_path
+        - plan_name
+        - node
+        - endpoint
+        - client
+        - display_name
+        - uri
+      properties:
+        export_kind:
+          type: string
+          enum: [subscription_access.v1alpha1]
+        subscription_id:
+          type: string
+        status:
+          type: string
+          enum: [active]
+        protocol:
+          type: string
+          enum: [vless-reality-xtls-vision]
+        protocol_path:
+          type: string
+          enum: [vless-reality-xtls-vision]
+        plan_name:
+          type: string
+        node:
+          $ref: "#/components/schemas/SubscriptionAccess/properties/node"
+        endpoint:
+          $ref: "#/components/schemas/SubscriptionAccess/properties/endpoint"
+        client:
+          type: object
+          required: [id, email, flow, level]
+          properties:
+            id:
+              type: string
+            email:
+              type: string
+            flow:
+              type: string
+              enum: [xtls-rprx-vision]
+            level:
+              type: integer
+        display_name:
+          type: string
+        uri:
+          type: string
+    ClientSubscriptionAccessEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/ClientSubscriptionAccess"
     CreateSubscriptionRequest:
       type: object
       required: [user_id, plan_id]

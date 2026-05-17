@@ -46,3 +46,15 @@ func TestBuildVLESSRealityURIDeterministic(t *testing.T) {
 		t.Fatalf("unexpected URI:\n%s", first)
 	}
 }
+
+func TestHashSubscriptionAccessTokenStableAndNotRaw(t *testing.T) {
+	token := "lnksa_example"
+	first := HashSubscriptionAccessToken(token)
+	second := HashSubscriptionAccessToken(token)
+	if first != second {
+		t.Fatalf("expected stable access token hash")
+	}
+	if first == token || !strings.Contains("0123456789abcdef", first[:1]) || len(first) != 64 {
+		t.Fatalf("expected sha256 hex hash, got %q", first)
+	}
+}

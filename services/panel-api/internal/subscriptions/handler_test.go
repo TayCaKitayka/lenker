@@ -113,6 +113,78 @@ func TestSubscriptionAccessUnavailable(t *testing.T) {
 	}
 }
 
+func TestCreateSubscriptionAccessTokenSuccess(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/subscriptions/sub-1/access-token", nil)
+	request.SetPathValue("id", "sub-1")
+	response := httptest.NewRecorder()
+
+	handler.CreateAccessToken(response, request.WithContext(auth.WithAdmin(request.Context(), testAdmin())))
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"access_token":"lnksa_test-token"`) {
+		t.Fatalf("expected plaintext access token response, got %s", response.Body.String())
+	}
+	if repo.accessTokenID != "sub-1" {
+		t.Fatalf("expected subscription id to reach repository, got %q", repo.accessTokenID)
+	}
+}
+
+func TestClientAccessRequiresBearerToken(t *testing.T) {
+	handler := NewHandler(nil, &fakeSubscriptionsRepository{}, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscription-access", nil)
+	response := httptest.NewRecorder()
+
+	handler.ClientAccess(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestClientAccessUsesAccessToken(t *testing.T) {
+	repo := &fakeSubscriptionsRepository{}
+	handler := NewHandler(nil, repo, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscription-access", nil)
+	request.Header.Set("Authorization", "Bearer access-token")
+	response := httptest.NewRecorder()
+
+	handler.ClientAccess(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if repo.consumerToken != "access-token" {
+		t.Fatalf("expected access token to reach repository, got %q", repo.consumerToken)
+	}
+	if strings.Contains(response.Body.String(), `"user_id"`) || strings.Contains(response.Body.String(), `"plan_id"`) {
+		t.Fatalf("expected client access response to omit provider-internal ids: %s", response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"uri":"vless://sub-1@example.com:443"`) {
+		t.Fatalf("expected access uri in response, got %s", response.Body.String())
+	}
+}
+
+func TestClientAccessRejectsInvalidToken(t *testing.T) {
+	handler := NewHandler(nil, &fakeSubscriptionsRepository{consumerErr: storage.ErrInvalidSubscriptionAccessToken}, testAdminOnly)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/client/subscription-access", nil)
+	request.Header.Set("Authorization", "Bearer invalid-token")
+	response := httptest.NewRecorder()
+
+	handler.ClientAccess(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestRenewSubscriptionValidationError(t *testing.T) {
 	handler := NewHandler(nil, &fakeSubscriptionsRepository{}, testAdminOnly)
 
@@ -128,11 +200,14 @@ func TestRenewSubscriptionValidationError(t *testing.T) {
 }
 
 type fakeSubscriptionsRepository struct {
-	created    storage.CreateSubscriptionInput
-	extendDays int
-	accessID   string
-	createErr  error
-	accessErr  error
+	created       storage.CreateSubscriptionInput
+	extendDays    int
+	accessID      string
+	accessTokenID string
+	consumerToken string
+	createErr     error
+	accessErr     error
+	consumerErr   error
 }
 
 func (r *fakeSubscriptionsRepository) List(ctx context.Context) ([]storage.Subscription, error) {
@@ -166,8 +241,31 @@ func (r *fakeSubscriptionsRepository) Access(ctx context.Context, id string) (st
 		Status:         "active",
 		Protocol:       "vless-reality-xtls-vision",
 		ProtocolPath:   "vless-reality-xtls-vision",
+		Client:         storage.SubscriptionAccessClient{ID: "sub-1", Email: "subscription:sub-1", Flow: "xtls-rprx-vision"},
 		URI:            "vless://sub-1@example.com:443",
 	}, nil
+}
+
+func (r *fakeSubscriptionsRepository) CreateAccessToken(ctx context.Context, id string) (storage.SubscriptionAccessToken, error) {
+	r.accessTokenID = id
+	if r.accessErr != nil {
+		return storage.SubscriptionAccessToken{}, r.accessErr
+	}
+	now := time.Now().UTC()
+	return storage.SubscriptionAccessToken{
+		SubscriptionID: id,
+		Token:          "lnksa_test-token",
+		ExpiresAt:      now.Add(24 * time.Hour),
+		CreatedAt:      now,
+	}, nil
+}
+
+func (r *fakeSubscriptionsRepository) AccessByToken(ctx context.Context, token string) (storage.SubscriptionAccess, error) {
+	r.consumerToken = token
+	if r.consumerErr != nil {
+		return storage.SubscriptionAccess{}, r.consumerErr
+	}
+	return r.Access(ctx, "sub-1")
 }
 
 func (r *fakeSubscriptionsRepository) Update(ctx context.Context, id string, input storage.UpdateSubscriptionInput) (storage.Subscription, error) {

@@ -38,6 +38,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/v1/subscriptions/{id}", h.adminOnly(http.HandlerFunc(h.Update)))
 	mux.Handle("POST /api/v1/subscriptions/{id}/renew", h.adminOnly(http.HandlerFunc(h.Renew)))
 	mux.Handle("GET /api/v1/subscriptions/{id}/access", h.adminOnly(http.HandlerFunc(h.Access)))
+	mux.Handle("POST /api/v1/subscriptions/{id}/access-token", h.adminOnly(http.HandlerFunc(h.CreateAccessToken)))
+	mux.HandleFunc("GET /api/v1/client/subscription-access", h.ClientAccess)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +108,34 @@ func (h *Handler) Access(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: access})
+}
+
+func (h *Handler) CreateAccessToken(w http.ResponseWriter, r *http.Request) {
+	token, err := h.subscriptions.CreateAccessToken(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusCreated, httpapi.Response{Data: token})
+}
+
+func (h *Handler) ClientAccess(w http.ResponseWriter, r *http.Request) {
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		httpapi.WriteError(w, http.StatusUnauthorized, "unauthorized", "subscription access token is missing or invalid")
+		return
+	}
+
+	access, err := h.subscriptions.AccessByToken(r.Context(), token)
+	if err != nil {
+		if errors.Is(err, storage.ErrInvalidSubscriptionAccessToken) {
+			httpapi.WriteError(w, http.StatusUnauthorized, "unauthorized", "subscription access token is missing or invalid")
+			return
+		}
+		writeSubscriptionAccessError(w, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, httpapi.Response{Data: clientAccessResponse(access)})
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -222,4 +252,35 @@ func errorReason(err error) string {
 		return "not_found"
 	}
 	return "storage_error"
+}
+
+func bearerToken(header string) (string, bool) {
+	const prefix = "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		return "", false
+	}
+
+	token := strings.TrimSpace(strings.TrimPrefix(header, prefix))
+	return token, token != ""
+}
+
+func clientAccessResponse(access storage.SubscriptionAccess) map[string]any {
+	return map[string]any{
+		"export_kind":     access.ExportKind,
+		"subscription_id": access.SubscriptionID,
+		"status":          access.Status,
+		"protocol":        access.Protocol,
+		"protocol_path":   access.ProtocolPath,
+		"plan_name":       access.PlanName,
+		"node":            access.Node,
+		"endpoint":        access.Endpoint,
+		"client": map[string]any{
+			"id":    access.Client.ID,
+			"email": access.Client.Email,
+			"flow":  access.Client.Flow,
+			"level": access.Client.Level,
+		},
+		"display_name": access.DisplayName,
+		"uri":          access.URI,
+	}
 }

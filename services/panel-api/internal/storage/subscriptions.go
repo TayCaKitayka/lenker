@@ -2,7 +2,10 @@ package storage
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -40,6 +43,13 @@ type SubscriptionAccess struct {
 	Client         SubscriptionAccessClient   `json:"client"`
 	DisplayName    string                     `json:"display_name"`
 	URI            string                     `json:"uri"`
+}
+
+type SubscriptionAccessToken struct {
+	SubscriptionID string    `json:"subscription_id"`
+	Token          string    `json:"access_token,omitempty"`
+	ExpiresAt      time.Time `json:"expires_at"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type SubscriptionAccessNode struct {
@@ -93,11 +103,16 @@ type SubscriptionsRepository interface {
 	Create(ctx context.Context, input CreateSubscriptionInput) (Subscription, error)
 	FindByID(ctx context.Context, id string) (Subscription, error)
 	Access(ctx context.Context, id string) (SubscriptionAccess, error)
+	CreateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error)
+	AccessByToken(ctx context.Context, token string) (SubscriptionAccess, error)
 	Update(ctx context.Context, id string, input UpdateSubscriptionInput) (Subscription, error)
 	Renew(ctx context.Context, id string, extendDays int) (Subscription, error)
 }
 
-var ErrSubscriptionAccessUnavailable = errors.New("subscription access unavailable")
+var (
+	ErrSubscriptionAccessUnavailable  = errors.New("subscription access unavailable")
+	ErrInvalidSubscriptionAccessToken = errors.New("invalid subscription access token")
+)
 
 type subscriptionsRepository struct {
 	db *sql.DB
@@ -381,6 +396,66 @@ func (r *subscriptionsRepository) Access(ctx context.Context, id string) (Subscr
 	}, nil
 }
 
+func (r *subscriptionsRepository) CreateAccessToken(ctx context.Context, id string) (SubscriptionAccessToken, error) {
+	token, err := newSubscriptionAccessToken()
+	if err != nil {
+		return SubscriptionAccessToken{}, err
+	}
+
+	var result SubscriptionAccessToken
+	err = r.db.QueryRowContext(ctx, `
+		INSERT INTO subscription_access_tokens (subscription_id, token_hash, expires_at)
+		SELECT s.id, $2, s.expires_at
+		FROM subscriptions s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.id = $1
+		  AND s.status = 'active'
+		  AND u.status = 'active'
+		  AND s.expires_at > now()
+		RETURNING subscription_id::text, expires_at, created_at
+	`, id, HashSubscriptionAccessToken(token)).Scan(
+		&result.SubscriptionID,
+		&result.ExpiresAt,
+		&result.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			if _, findErr := r.FindByID(ctx, id); errors.Is(findErr, ErrNotFound) {
+				return SubscriptionAccessToken{}, ErrNotFound
+			}
+			return SubscriptionAccessToken{}, ErrSubscriptionAccessUnavailable
+		}
+		return SubscriptionAccessToken{}, err
+	}
+	result.Token = token
+	return result, nil
+}
+
+func (r *subscriptionsRepository) AccessByToken(ctx context.Context, token string) (SubscriptionAccess, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return SubscriptionAccess{}, ErrInvalidSubscriptionAccessToken
+	}
+
+	var subscriptionID string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT subscription_id::text
+		FROM subscription_access_tokens
+		WHERE token_hash = $1
+		  AND status = 'active'
+		  AND expires_at > now()
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, HashSubscriptionAccessToken(token)).Scan(&subscriptionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SubscriptionAccess{}, ErrInvalidSubscriptionAccessToken
+		}
+		return SubscriptionAccess{}, err
+	}
+	return r.Access(ctx, subscriptionID)
+}
+
 func buildVLESSRealityURI(endpoint SubscriptionAccessEndpoint, client SubscriptionAccessClient, displayName string) string {
 	values := url.Values{}
 	values.Set("encryption", "none")
@@ -401,6 +476,19 @@ func buildVLESSRealityURI(endpoint SubscriptionAccessEndpoint, client Subscripti
 		Fragment: displayName,
 	}
 	return uri.String()
+}
+
+func newSubscriptionAccessToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return "lnksa_" + hex.EncodeToString(raw), nil
+}
+
+func HashSubscriptionAccessToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func (r *subscriptionsRepository) Update(ctx context.Context, id string, input UpdateSubscriptionInput) (Subscription, error) {

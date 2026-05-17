@@ -32,6 +32,7 @@ Current foundation:
 - node heartbeat status and `last_seen_at` updates
 - config revision metadata storage with deterministic signed subscription-aware VLESS Reality Xray config skeleton payloads
 - provider-side subscription access export foundation for the single VLESS Reality MVP path
+- minimal subscription access token read boundary for consumer-facing access export
 - RBAC and audit package-level contracts without a full permission engine
 - package placeholders for the MVP control-plane domains
 
@@ -71,6 +72,8 @@ Implemented foundation routes:
 - `PATCH /api/v1/subscriptions/{id}`
 - `POST /api/v1/subscriptions/{id}/renew`
 - `GET /api/v1/subscriptions/{id}/access`
+- `POST /api/v1/subscriptions/{id}/access-token`
+- `GET /api/v1/client/subscription-access`
 - `GET /api/v1/nodes`
 - `POST /api/v1/nodes/bootstrap-token`
 - `GET /api/v1/nodes/{id}`
@@ -125,9 +128,14 @@ Subscription access export:
 - `GET /api/v1/subscriptions/{id}/access` is admin-only.
 - It returns a deterministic `subscription_access.v1alpha1` object and VLESS URI
   for the single MVP `VLESS + Reality + XTLS Vision` path.
-- The export is provider-side foundation work only; it is not full end-user app
-  authentication, device management, marketplace delivery, or multi-protocol
-  export.
+- `POST /api/v1/subscriptions/{id}/access-token` is admin-only and returns a
+  plaintext access token once; panel-api stores only the token hash and expiry.
+- `GET /api/v1/client/subscription-access` accepts
+  `Authorization: Bearer <subscription_access_token>` and returns a redacted
+  access export without admin session auth.
+- The token endpoint is a narrow read boundary only; it is not full end-user app
+  authentication, device management, marketplace delivery, billing, or
+  multi-protocol export.
 
 Use the token returned by admin login:
 
